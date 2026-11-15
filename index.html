@@ -7,21 +7,19 @@
 <style>
   :root{
     --bg:#0a0e13; --panel:#11161d; --panel2:#151c25; --line:#232c38;
-    --fg:#d8e2ee; --muted:#8b97a8; --accent:#22d3ee;
+    --fg:#d8e2ee; --muted:#8b97a8; --accent:#22d3ee; --warn:#f59e0b;
   }
   *{box-sizing:border-box}
   html,body{height:100%;margin:0}
-  body{
-    background:var(--bg); color:var(--fg);
-    font:13px/1.45 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
-    overflow:hidden;
-  }
-  #app{display:grid;grid-template-columns:286px 1fr 348px;height:100vh}
+  body{background:var(--bg);color:var(--fg);
+    font:13px/1.45 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;overflow:hidden}
+  #app{display:grid;grid-template-columns:300px 1fr 352px;height:100vh}
   .panel{background:var(--panel);border-right:1px solid var(--line);overflow-y:auto;padding:10px}
   #right{border-right:0;border-left:1px solid var(--line)}
   h1{font-size:21px;line-height:1.15;margin:0 0 3px;letter-spacing:.3px;font-weight:650}
   h1 span{color:var(--accent)}
-  h2{font-size:12px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin:18px 0 7px}
+  h2{font-size:12px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);
+    margin:18px 0 7px;display:flex;justify-content:space-between;align-items:baseline;gap:6px}
   section{border-top:1px solid var(--line);padding-top:2px}
   section:first-of-type{border-top:0}
   .hint{color:var(--muted);font-size:12px;margin:4px 0}
@@ -41,22 +39,30 @@
   .btn:hover{border-color:var(--accent)}
   .btn input{display:none}
   .btn.small{font-size:12px;padding:2px 7px}
-  .card{background:var(--panel2);border:1px solid var(--line);border-radius:7px;padding:7px;margin-bottom:7px}
-  .card.active{border-color:var(--accent);box-shadow:0 0 0 1px #22d3ee33}
-  .cardhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}
-  .cardhead b{font-size:12px}
-  .filerow{display:flex;gap:6px;align-items:center;margin-bottom:4px}
-  .fname{font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
-  .sl{font-size:12px;color:var(--muted);margin-top:4px}
+  .sl{font-size:12px;color:var(--muted);margin-top:5px}
   .sl [data-v]{color:var(--fg);float:right;font-variant-numeric:tabular-nums}
   .mini-chk{font-size:12px;color:var(--muted);display:inline-flex;gap:4px;align-items:center}
+  .card{background:var(--panel2);border:1px solid var(--line);border-radius:7px;padding:8px;margin-bottom:7px}
   #stage{position:relative;overflow:hidden;background:#0a0e13}
   #cv{display:block;width:100%;height:100%;cursor:crosshair;touch-action:none}
   #toolbar{position:absolute;left:12px;top:12px;display:flex;gap:5px;align-items:center;
     background:#11161de6;border:1px solid var(--line);border-radius:8px;padding:5px 7px;backdrop-filter:blur(6px)}
   #toolbar .sep{width:1px;height:18px;background:var(--line);margin:0 3px}
   #toolbar label{font-size:12px;color:var(--muted);display:flex;gap:4px;align-items:center}
-  .list{max-height:230px;overflow-y:auto;border:1px solid var(--line);border-radius:6px}
+
+  /* photoshop-style layer stack */
+  .lay{display:flex;align-items:center;gap:6px;padding:3px 5px;border-radius:5px;cursor:pointer;
+    font-size:12px;user-select:none}
+  .lay:hover{background:#1a2430}
+  .lay.sel{background:#16303a;box-shadow:inset 0 0 0 1px #22d3ee55}
+  .lay .eye{width:16px;text-align:center;color:var(--muted);font-size:12px}
+  .lay.off{opacity:.45}
+  .lay .sw{width:9px;height:9px;border-radius:2px;flex:0 0 auto}
+  .lay .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .lay .sub{color:var(--muted);font-size:12px;flex:0 0 auto}
+  .stack{border:1px solid var(--line);border-radius:6px;padding:3px;background:#0e131a}
+
+  .list{max-height:210px;overflow-y:auto;border:1px solid var(--line);border-radius:6px}
   .pinrow{display:flex;gap:6px;align-items:center;padding:2px 5px;border-bottom:1px solid #1b232e;cursor:pointer}
   .pinrow:hover{background:#1a2430}
   .pinrow.linked{background:#22d3ee14;box-shadow:inset 2px 0 0 currentColor}
@@ -71,10 +77,10 @@
   table{width:100%;border-collapse:collapse;font-size:12px}
   th,td{text-align:left;padding:2px 5px;border-bottom:1px solid #1b232e;white-space:nowrap}
   th{color:var(--muted);font-weight:500;position:sticky;top:0;background:var(--panel)}
-  td.sel{outline:1px solid var(--accent)}
-  .tablewrap{max-height:260px;overflow:auto;border:1px solid var(--line);border-radius:6px}
+  .tablewrap{max-height:240px;overflow:auto;border:1px solid var(--line);border-radius:6px}
   .empty{color:var(--muted);font-size:12px;padding:8px;text-align:center}
   kbd{background:#1b232e;border:1px solid var(--line);border-radius:3px;padding:0 4px;font-size:12px}
+  .cal{font-variant-numeric:tabular-nums}
 </style>
 </head>
 <body>
@@ -99,15 +105,21 @@
     </section>
 
     <section>
-      <h2>Layers</h2>
-      <div id="layerCards"></div>
-      <label class="mini-chk" style="margin-top:2px">
-        <input type="checkbox" id="mirrorBack" checked> mirror back (view through board)
-      </label>
+      <h2>Layers <button id="addTrace" style="font-size:12px;text-transform:none;letter-spacing:0;padding:1px 6px">+ trace</button></h2>
+      <div class="stack" id="layerStack"></div>
+      <div id="layerEditor" style="margin-top:8px"></div>
     </section>
 
     <section>
-      <h2>Guides</h2>
+      <h2>View</h2>
+      <div class="row">
+        <button id="fit">Fit</button>
+        <button id="zoom1">1:1</button>
+        <span class="hint" id="zoomLbl">100%</span>
+      </div>
+      <label class="mini-chk" style="margin:0 0 6px">
+        <input type="checkbox" id="mirrorBack" checked> mirror back (view through board)
+      </label>
       <div class="row">
         <label class="mini-chk"><input type="checkbox" id="gGrid" checked> grid</label>
         <label class="mini-chk"><input type="checkbox" id="gCross" checked> cross</label>
@@ -118,21 +130,11 @@
     </section>
 
     <section>
-      <h2>View</h2>
-      <div class="row">
-        <button id="fit">Fit</button>
-        <button id="zoom1">1:1</button>
-        <span class="hint" id="zoomLbl">100%</span>
-      </div>
-    </section>
-
-    <section>
       <h2>Keys</h2>
       <p class="hint">
-        <kbd>Z</kbd> zoom toggle · <kbd>R</kbd> rotate +1° · <kbd>Shift</kbd>+<kbd>R</kbd> −1°<br>
-        <kbd>←↑↓→</kbd> nudge pad (<kbd>Shift</kbd> ×10) · <kbd>Del</kbd> delete<br>
-        <kbd>F</kbd> fit · <kbd>Esc</kbd> deselect · wheel = zoom<br>
-        <kbd>Alt</kbd>+drag = move the active layer
+        <kbd>Z</kbd> zoom · <kbd>R</kbd>/<kbd>Shift</kbd>+<kbd>R</kbd> rotate layer ±1°<br>
+        <kbd>←↑↓→</kbd> nudge (<kbd>Shift</kbd> ×10) · <kbd>Del</kbd> delete · <kbd>F</kbd> fit<br>
+        <kbd>Esc</kbd> deselect · <kbd>Enter</kbd> end trace · <kbd>Alt</kbd>+drag = move layer
       </p>
     </section>
   </aside>
@@ -140,9 +142,11 @@
   <main id="stage">
     <canvas id="cv"></canvas>
     <div id="toolbar">
-      <button data-tool="pan" class="on">✋ Pan</button>
-      <button data-tool="pad">⊕ Pad</button>
-      <button data-tool="mcu">▣ MCU</button>
+      <button data-tool="pan" class="on" title="pan / move">✋</button>
+      <button data-tool="pad" title="add pad">⊕ pad</button>
+      <button data-tool="trace" title="draw copper trace">⌇ trace</button>
+      <button data-tool="measure" title="measure / calibrate">↔ ruler</button>
+      <button data-tool="mask" title="drag a mask window">▢ mask</button>
       <span class="sep"></span>
       <label>side
         <select id="padSide"><option value="front">front</option><option value="back">back</option></select>
@@ -171,9 +175,15 @@
         </label>
       </div>
       <div class="row">
-        <label class="sl">W<input type="number" id="mcuW" value="220" style="width:58px"></label>
-        <label class="sl">H<input type="number" id="mcuH" value="220" style="width:58px"></label>
-        <label class="sl">rot<input type="number" id="mcuRot" value="0" step="1" style="width:58px"></label>
+        <label class="sl">W<input type="number" id="mcuW" value="220" style="width:60px"></label>
+        <label class="sl">H<input type="number" id="mcuH" value="220" style="width:60px"></label>
+        <label class="sl">rot<input type="number" id="mcuRot" value="0" step="1" style="width:60px"></label>
+      </div>
+      <label class="sl">scale <span data-v id="mcuScaleV">1.00</span>
+        <input type="range" id="mcuScale" min="0.1" max="6" step="0.01" value="1"></label>
+      <div class="row">
+        <button id="mcuToMm" class="btn small" title="convert W to mm using the calibration">W→mm</button>
+        <button id="mcuFromMm" class="btn small" title="set W from a mm value">mm→W</button>
       </div>
       <label class="sl">pinout table — one <code>pin#,name,function</code> per line
         <textarea id="mcuCsv" rows="3" style="width:100%;resize:vertical"
@@ -183,7 +193,19 @@
     </section>
 
     <section>
-      <h2>Pins <span class="hint" id="pinHint">pick a pad, then a pin</span></h2>
+      <h2>Scale &amp; measure</h2>
+      <div class="row">
+        <label class="mini-chk"><input type="checkbox" id="useMm"> rulers in mm</label>
+        <button id="calClear" class="btn small">clear</button>
+      </div>
+      <label class="sl">board dimension (mm), then ↔ ruler and drag
+        <input type="number" id="calMm" placeholder="e.g. 45" step="0.1" min="0.01" style="width:100%">
+      </label>
+      <p class="hint cal" id="calInfo">no calibration — 1 px</p>
+    </section>
+
+    <section>
+      <h2>Pins <span class="hint">pick a pad, then a pin</span></h2>
       <div class="list" id="pinList"></div>
     </section>
 
@@ -209,10 +231,16 @@ const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const num = (v, d = 0) => Number.isFinite(+v) ? +v : d;
 const rad = d => d * Math.PI / 180;
+const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 
 /* ------------------------------------------------------------------ state */
 const mkLayer = id => ({ id, src: null, img: null, name: '', x: 0, y: 0, scale: 1, rot: 0,
-  flipH: false, flipV: false, opacity: 1, blend: 'source-over', visible: true });
+  flipH: false, flipV: false, opacity: 1, blend: 'source-over', visible: true,
+  bright: 1, contrast: 1,
+  quad: [[0,0],[1,0],[1,1],[0,1]],
+  mask: { on: false, kind: 'ellipse', x: 0, y: 0, rx: 120, ry: 120, feather: 0.15, invert: false } });
+
+const DEFAULT_QUAD = JSON.stringify([[0,0],[1,0],[1,1],[0,1]]);
 
 const S = {
   project: 'untitled',
@@ -220,12 +248,18 @@ const S = {
   active: 'front',
   mirrorBack: true,
   pads: [], nextId: 1, selectedPad: null, padSide: 'front',
-  mcu: { name: '', n: 32, x: 0, y: 0, w: 220, h: 220, rot: 0, pins: [] },
+  traces: [], nextTraceId: 1, activeTrace: null,
+  mcu: { name: '', n: 32, x: 0, y: 0, w: 220, h: 220, rot: 0, base: 220, pins: [] },
   links: [],
   view: { zoom: 1, tx: 0, ty: 0 },
   tool: 'pan',
   pin1: { x: -150, y: -150, on: true },
   guides: { grid: true, cross: true, rulers: true, pin1: true, outline: true },
+  persist: null,          // {a,b} corners while editing a perspective
+  maskEdit: null,         // {layer, ax, ay} while dragging a mask
+  measure: null,          // {a,b} in progress or last measurement
+  cal: null,              // {a,b,mm}
+  useMm: false,
 };
 
 /* ----------------------------------------------------------------- canvas */
@@ -243,6 +277,108 @@ function niceStep(min) {
   return p * 10;
 }
 
+/* ---------------------------------------------------- homography (3x3) */
+// Unit square → quad, Heckbert's closed form. Row-major [a b c | d e f | g h 1].
+function homoSqToQuad(q) {
+  const [p0, p1, p2, p3] = q;              // TL TR BR BL
+  const sx = p0.x - p1.x + p2.x - p3.x;
+  const sy = p0.y - p1.y + p2.y - p3.y;
+  let g = 0, h = 0;
+  if (Math.abs(sx) > 1e-9 || Math.abs(sy) > 1e-9) {
+    const dx1 = p1.x - p2.x, dx2 = p3.x - p2.x;
+    const dy1 = p1.y - p2.y, dy2 = p3.y - p2.y;
+    const den = dx1 * dy2 - dx2 * dy1;
+    if (Math.abs(den) > 1e-12) {
+      g = (sx * dy2 - dx2 * sy) / den;
+      h = (dx1 * sy - sx * dy1) / den;
+    }
+  }
+  return [
+    p1.x - p0.x + g * p1.x, p3.x - p0.x + h * p3.x, p0.x,
+    p1.y - p0.y + g * p1.y, p3.y - p0.y + h * p3.y, p0.y,
+    g, h, 1,
+  ];
+}
+function inv3(m) {
+  const [a, b, c, d, e, f, g, h, i] = m;
+  const A = e * i - f * h, B = -(d * i - f * g), C = d * h - e * g;
+  const det = a * A + b * B + c * C;
+  if (Math.abs(det) < 1e-12) return null;
+  const s = 1 / det;
+  return [
+    A * s, -(b * i - c * h) * s, (b * f - c * e) * s,
+    B * s, (a * i - c * g) * s, -(a * f - c * d) * s,
+    C * s, -(a * h - b * g) * s, (a * e - b * d) * s,
+  ];
+}
+
+/* ---------------------------------------------------------------- warping */
+const WARP_CAP = 1600;   // longest side of the warped buffer
+
+function srcData(L) {
+  const img = L.img;
+  if (L._sd && L._sdFor === img) return L._sd;
+  const c = document.createElement('canvas');
+  c.width = img.naturalWidth || img.width;
+  c.height = img.naturalHeight || img.height;
+  const g = c.getContext('2d', { willReadFrequently: true });
+  g.drawImage(img, 0, 0);
+  L._sd = g.getImageData(0, 0, c.width, c.height);
+  L._sdFor = img;
+  return L._sd;
+}
+
+// Build (and cache) the perspective-warped bitmap for a layer, in layer-local coords.
+function warped(L) {
+  if (JSON.stringify(L.quad) === DEFAULT_QUAD || !L.img) return null;
+  const img = L.img, W = img.naturalWidth || img.width, H = img.naturalHeight || img.height;
+  const key = L.src ? L.src.length + ':' + JSON.stringify(L.quad) : 'q';
+  if (L._warp && L._warp.key === key) return L._warp;
+
+  const dst = L.quad.map(([u, v]) => ({ x: (u - .5) * W, y: (v - .5) * H }));
+  const minx = Math.min(...dst.map(p => p.x)), maxx = Math.max(...dst.map(p => p.x));
+  const miny = Math.min(...dst.map(p => p.y)), maxy = Math.max(...dst.map(p => p.y));
+  const bw = Math.max(1, maxx - minx), bh = Math.max(1, maxy - miny);
+  const k = Math.min(1, WARP_CAP / Math.max(bw, bh));
+  const cw = Math.max(1, Math.round(bw * k)), ch = Math.max(1, Math.round(bh * k));
+
+  const c = document.createElement('canvas');
+  c.width = cw; c.height = ch;
+  const cg = c.getContext('2d');
+  const M = homoSqToQuad(dst.map(p => ({ x: (p.x - minx) * k, y: (p.y - miny) * k })));
+  const Mi = inv3(M);
+  if (!Mi) return null;
+
+  const sd = srcData(L), sw = sd.width, sh = sd.height, sdat = sd.data;
+  const out = cg.createImageData(cw, ch), odat = out.data;
+
+  for (let y = 0; y < ch; y++) {
+    for (let x = 0; x < cw; x++) {
+      const w = Mi[6] * x + Mi[7] * y + Mi[8];
+      if (Math.abs(w) < 1e-12) continue;
+      const u = (Mi[0] * x + Mi[1] * y + Mi[2]) / w;
+      const v = (Mi[3] * x + Mi[4] * y + Mi[5]) / w;
+      if (u < 0 || u > 1 || v < 0 || v > 1) continue;
+      // bilinear sample
+      const fx = u * (sw - 1), fy = v * (sh - 1);
+      const x0 = fx | 0, y0 = fy | 0;
+      const x1 = Math.min(x0 + 1, sw - 1), y1 = Math.min(y0 + 1, sh - 1);
+      const tx = fx - x0, ty = fy - y0;
+      const i00 = (y0 * sw + x0) * 4, i10 = (y0 * sw + x1) * 4;
+      const i01 = (y1 * sw + x0) * 4, i11 = (y1 * sw + x1) * 4;
+      const o = (y * cw + x) * 4;
+      for (let chn = 0; chn < 4; chn++) {
+        const a = sdat[i00 + chn] * (1 - tx) + sdat[i10 + chn] * tx;
+        const b = sdat[i01 + chn] * (1 - tx) + sdat[i11 + chn] * tx;
+        odat[o + chn] = a * (1 - ty) + b * ty;
+      }
+    }
+  }
+  cg.putImageData(out, 0, 0);
+  L._warp = { key, canvas: c, ox: minx, oy: miny, w: bw, h: bh };
+  return L._warp;
+}
+
 /* --------------------------------------------------------------- pin model */
 function pinLayout(m) {
   const N = m.n | 0, out = [];
@@ -250,12 +386,11 @@ function pinLayout(m) {
   const { w, h } = m;
   if (N % 4 === 0) {
     const per = N / 4;
-    // QFN: counter-clockwise from pin 1 at the top of the left edge
     for (let i = 0; i < per; i++) out.push({ n: i + 1, x: -w / 2, y: -h / 2 + (i + .5) * h / per, side: 'left' });
     for (let i = 0; i < per; i++) out.push({ n: per + i + 1, x: -w / 2 + (i + .5) * w / per, y: h / 2, side: 'bottom' });
     for (let i = 0; i < per; i++) out.push({ n: 2 * per + i + 1, x: w / 2, y: h / 2 - (i + .5) * h / per, side: 'right' });
     for (let i = 0; i < per; i++) out.push({ n: 3 * per + i + 1, x: w / 2 - (i + .5) * w / per, y: -h / 2, side: 'top' });
-  } else { // not a multiple of 4 → circular ring
+  } else {
     const r = Math.max(w, h) / 2;
     for (let i = 0; i < N; i++) {
       const a = -Math.PI / 2 + i * 2 * Math.PI / N;
@@ -285,21 +420,124 @@ function addLink(padId, pinN) {
   renderTables(); render(); saveLocal();
 }
 
+/* ------------------------------------------------------------- calibration */
+const pxPerMm = () => (S.cal && S.cal.mm > 0) ? dist(S.cal.a, S.cal.b) / S.cal.mm : 0;
+const mmPerPx = () => { const p = pxPerMm(); return p > 0 ? 1 / p : 0; };
+const fmtLen = px => {
+  const p = pxPerMm();
+  if (S.useMm && p > 0) return (px / p).toFixed(2) + ' mm';
+  return Math.round(px) + ' px';
+};
+
 /* ---------------------------------------------------------------- drawing */
-function drawLayers(g) {
-  for (const id of ['back', 'front', 'close']) {
+const LAYER_ORDER = ['back', 'front', 'close'];
+
+function drawLayerBody(g, L) {
+  const wp = warped(L);
+  const mirror = L.id === 'back' && S.mirrorBack ? -1 : 1;
+  g.save();
+  g.globalAlpha = L.opacity;
+  g.globalCompositeOperation = L.blend;
+  if (L.bright !== 1 || L.contrast !== 1) {
+    g.filter = `brightness(${L.bright}) contrast(${L.contrast})`;
+  }
+  g.translate(L.x, L.y);
+  g.rotate(rad(L.rot));
+  g.scale(L.scale * (L.flipH ? -1 : 1) * mirror, L.scale * (L.flipV ? -1 : 1));
+  if (wp) g.drawImage(wp.canvas, wp.ox, wp.oy, wp.w, wp.h);
+  else {
+    const img = L.img;
+    g.drawImage(img, -img.width / 2, -img.height / 2);
+  }
+  g.restore();
+}
+
+function maskRadiusPx(L, z) {
+  const m = L.mask;
+  return Math.max(m.rx, m.ry) * z;
+}
+
+// Masked layers render into a viewport-sized buffer so the mask lives in world space.
+function drawLayerMasked(g, L, view) {
+  const { W, H, dpr } = view;
+  const pw = Math.max(1, Math.round(W * dpr)), ph = Math.max(1, Math.round(H * dpr));
+  if (!L._tmp || L._tmp.width !== pw || L._tmp.height !== ph) {
+    L._tmp = document.createElement('canvas');
+    L._tmp.width = pw; L._tmp.height = ph;
+  }
+  const tg = L._tmp.getContext('2d');
+  tg.setTransform(1, 0, 0, 1, 0, 0);
+  tg.clearRect(0, 0, pw, ph);
+
+  tg.setTransform(dpr * view.z, 0, 0, dpr * view.z, dpr * view.tx, dpr * view.ty);
+  drawLayerBody(tg, L);
+
+  // mask shape, drawn in screen pixels on its own buffer so we can feather it
+  const m = L.mask;
+  if (!L._maskCv || L._maskCv.width !== pw || L._maskCv.height !== ph) {
+    L._maskCv = document.createElement('canvas');
+    L._maskCv.width = pw; L._maskCv.height = ph;
+  }
+  const mg = L._maskCv.getContext('2d');
+  mg.setTransform(1, 0, 0, 1, 0, 0);
+  mg.clearRect(0, 0, pw, ph);
+  if (m.invert) { mg.fillStyle = '#fff'; mg.fillRect(0, 0, pw, ph); }
+  mg.setTransform(dpr, 0, 0, dpr, 0, 0);
+  mg.fillStyle = m.invert ? '#000' : '#fff';
+  const sx = m.x * view.z + view.tx, sy = m.y * view.z + view.ty;
+  const rx = Math.max(1, m.rx * view.z), ry = Math.max(1, m.ry * view.z);
+  mg.beginPath();
+  if (m.kind === 'ellipse') mg.ellipse(sx, sy, rx, ry, 0, 0, 7);
+  else mg.rect(sx - rx, sy - ry, rx * 2, ry * 2);
+  mg.fill();
+
+  tg.setTransform(1, 0, 0, 1, 0, 0);
+  tg.globalCompositeOperation = 'destination-in';
+  const feather = m.feather * Math.max(rx, ry) * dpr * 0.5;
+  tg.filter = feather > 0.4 ? `blur(${feather.toFixed(1)}px)` : 'none';
+  tg.drawImage(L._maskCv, 0, 0);
+  tg.filter = 'none';
+  tg.globalCompositeOperation = 'source-over';
+
+  g.save();
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.drawImage(L._tmp, 0, 0, W, H);
+  g.restore();
+}
+
+function drawLayers(g, view) {
+  for (const id of LAYER_ORDER) {
     const L = S.layers[id];
     if (!L.img || !L.visible) continue;
-    const mirror = id === 'back' && S.mirrorBack ? -1 : 1;
-    g.save();
-    g.globalAlpha = L.opacity;
-    g.globalCompositeOperation = L.blend;
-    g.translate(L.x, L.y);
-    g.rotate(rad(L.rot));
-    g.scale(L.scale * (L.flipH ? -1 : 1) * mirror, L.scale * (L.flipV ? -1 : 1));
-    g.drawImage(L.img, -L.img.width / 2, -L.img.height / 2);
-    g.restore();
+    if (L.mask.on) drawLayerMasked(g, L, view);
+    else drawLayerBody(g, L);
   }
+}
+
+function drawTraces(g) {
+  const z = S.view.zoom;
+  g.save();
+  g.lineCap = 'round'; g.lineJoin = 'round';
+  for (const t of S.traces) {
+    if (!t.visible || t.pts.length < 1) continue;
+    g.strokeStyle = t.color;
+    g.lineWidth = Math.max(1.5 / z, t.width);
+    if (t.side === 'back') g.setLineDash([6 / z, 4 / z]);
+    g.globalAlpha = S.activeTrace === t.id ? 1 : 0.85;
+    g.beginPath();
+    t.pts.forEach((p, i) => i ? g.lineTo(p.x, p.y) : g.moveTo(p.x, p.y));
+    if (t.pts.length === 1) g.lineTo(t.pts[0].x + .01, t.pts[0].y);
+    g.stroke();
+    g.setLineDash([]);
+    // waypoints
+    const r = 3.2 / z;
+    for (const p of t.pts) {
+      g.beginPath(); g.arc(p.x, p.y, r, 0, 7);
+      g.fillStyle = t.color; g.fill();
+    }
+  }
+  g.globalAlpha = 1;
+  g.restore();
 }
 
 function drawGrid(g, W, H, z, tx, ty) {
@@ -365,9 +603,13 @@ function drawMcu(g) {
     g.fillStyle = col || '#a58a4a';
     g.fillText(String(p.n), n.x, n.y);
   }
-  // resize + rotate handles
-  g.strokeStyle = '#f59e0b'; g.lineWidth = 1.5 / z;
-  g.beginPath(); g.arc(m.w / 2, m.h / 2, 6 / z, 0, 7); g.stroke();
+  // corner resize handles + rotate handle
+  g.strokeStyle = '#f59e0b'; g.lineWidth = 1.5 / z; g.fillStyle = '#0a0e13';
+  for (const [cx, cy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
+    g.beginPath();
+    g.rect(cx * m.w / 2 - 5 / z, cy * m.h / 2 - 5 / z, 10 / z, 10 / z);
+    g.fill(); g.stroke();
+  }
   g.beginPath(); g.moveTo(0, -m.h / 2); g.lineTo(0, -m.h / 2 - 26 / z); g.stroke();
   g.beginPath(); g.arc(0, -m.h / 2 - 26 / z, 5 / z, 0, 7); g.stroke();
   g.restore();
@@ -424,8 +666,62 @@ function drawPin1(g) {
   g.restore();
 }
 
-function drawRulers(g, W, H, z, tx, ty) {
-  const step = niceStep(90 / z);
+// perspective / mask / measure overlays
+function drawHandles(g) {
+  const z = S.view.zoom;
+
+  if (S.persist) {
+    const L = S.layers[S.persist.layer];
+    if (L && L.img) {
+      const q = L.quad.map(([u, v]) => layerToWorld(L, { x: (u - .5) * L.img.width, y: (v - .5) * L.img.height }));
+      g.save();
+      g.strokeStyle = '#22d3ee'; g.lineWidth = 1.5 / z; g.setLineDash([4 / z, 3 / z]);
+      g.beginPath();
+      q.forEach((p, i) => i ? g.lineTo(p.x, p.y) : g.moveTo(p.x, p.y));
+      g.closePath(); g.stroke(); g.setLineDash([]);
+      for (const p of q) {
+        g.beginPath(); g.arc(p.x, p.y, 6 / z, 0, 7);
+        g.fillStyle = '#22d3ee'; g.fill();
+        g.strokeStyle = '#04141a'; g.lineWidth = 1.5 / z; g.stroke();
+      }
+      g.restore();
+    }
+  }
+
+  for (const id of LAYER_ORDER) {
+    const L = S.layers[id];
+    if (!L.mask.on || !L.img || !L.visible) continue;
+    const m = L.mask;
+    g.save();
+    g.strokeStyle = '#a78bfa'; g.lineWidth = 1.5 / z; g.setLineDash([6 / z, 4 / z]);
+    g.beginPath();
+    if (m.kind === 'ellipse') g.ellipse(m.x, m.y, m.rx, m.ry, 0, 0, 7);
+    else g.rect(m.x - m.rx, m.y - m.ry, m.rx * 2, m.ry * 2);
+    g.stroke();
+    g.restore();
+  }
+
+  const mm = S.measure;
+  if (mm && mm.a && mm.b) {
+    g.save();
+    g.strokeStyle = '#4ade80'; g.lineWidth = 1.8 / z;
+    g.beginPath(); g.moveTo(mm.a.x, mm.a.y); g.lineTo(mm.b.x, mm.b.y); g.stroke();
+    const mid = { x: (mm.a.x + mm.b.x) / 2, y: (mm.a.y + mm.b.y) / 2 };
+    g.fillStyle = '#4ade80';
+    g.font = `${clamp(12 / z, 8, 26)}px ui-monospace,monospace`;
+    g.textAlign = 'center'; g.textBaseline = 'bottom';
+    g.fillText(fmtLen(dist(mm.a, mm.b)), mid.x, mid.y - 6 / z);
+    g.restore();
+  }
+}
+
+function drawRulers(g, W, H, view) {
+  const { z, tx, ty } = view;
+  const p = pxPerMm();
+  const perPx = (S.useMm && p > 0) ? 1 / (z * p) : 1 / z;   // logical units per screen px
+  const step = niceStep(90 * perPx);
+  const label = v => (S.useMm && p > 0) ? String(+(v).toFixed(2)) : String(Math.round(v));
+
   g.save();
   g.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
   g.fillStyle = '#0b1119'; g.fillRect(0, 0, W, 15); g.fillRect(0, 0, 15, H);
@@ -433,36 +729,46 @@ function drawRulers(g, W, H, z, tx, ty) {
   g.moveTo(0, 15.5); g.lineTo(W, 15.5); g.moveTo(15.5, 0); g.lineTo(15.5, H); g.stroke();
   g.font = '10px ui-monospace,monospace'; g.fillStyle = '#8b97a8';
   g.textBaseline = 'top'; g.textAlign = 'left';
+
+  const mult = (S.useMm && p > 0) ? p : 1;   // world px → display units
   for (let x = Math.floor((0 - tx) / z / step) * step; ; x += step) {
     const sx = x * z + tx;
     if (sx > W) break; if (sx < 0) continue;
     g.beginPath(); g.moveTo(sx + .5, 11); g.lineTo(sx + .5, 15); g.stroke();
-    g.fillText(String(Math.round(x)), sx + 2, 1.5);
+    g.fillText(label(x * mult), sx + 2, 1.5);
   }
   for (let y = Math.floor((0 - ty) / z / step) * step; ; y += step) {
     const sy = y * z + ty;
     if (sy > H) break; if (sy < 0) continue;
     g.beginPath(); g.moveTo(11, sy + .5); g.lineTo(15, sy + .5); g.stroke();
     g.save(); g.translate(1.5, sy + 2); g.rotate(Math.PI / 2); g.textBaseline = 'bottom';
-    g.fillText(String(Math.round(y)), 0, 0); g.restore();
+    g.fillText(label(y * mult), 0, 0); g.restore();
   }
   g.restore();
 }
 
 function paint(g, W, H, dpr, z, tx, ty, guides) {
+  const view = { W, H, dpr, z, tx, ty };
   g.setTransform(dpr, 0, 0, dpr, 0, 0);
   g.fillStyle = '#0a0e13'; g.fillRect(0, 0, W, H);
   g.save();
   g.setTransform(dpr * z, 0, 0, dpr * z, dpr * tx, dpr * ty);
   if (guides && S.guides.grid) drawGrid(g, W, H, z, tx, ty);
-  drawLayers(g);
+  drawLayers(g, view);
+  drawTraces(g);
   drawLinks(g);
   drawMcu(g);
   drawPads(g);
   if (guides && S.guides.pin1 && S.pin1.on) drawPin1(g);
   if (guides && S.guides.cross) drawCross(g, W, H, z, tx, ty);
   g.restore();
-  if (guides && S.guides.rulers) drawRulers(g, W, H, z, tx, ty);
+  if (guides) {
+    g.save();
+    g.setTransform(dpr * z, 0, 0, dpr * z, dpr * tx, dpr * ty);
+    drawHandles(g);
+    g.restore();
+  }
+  if (guides && S.guides.rulers) drawRulers(g, W, H, view);
 
   const empty = !Object.values(S.layers).some(l => l.img && l.visible);
   if (empty && guides) {
@@ -471,7 +777,7 @@ function paint(g, W, H, dpr, z, tx, ty, guides) {
     g.textAlign = 'center'; g.textBaseline = 'middle';
     g.fillText('Load the front photo to start', W / 2, H / 2 - 16);
     g.fillStyle = '#3d4b5b'; g.font = '12px ui-sans-serif,system-ui';
-    g.fillText('then the back photo → “mirror back” → align vias with the difference blend', W / 2, H / 2 + 12);
+    g.fillText('PNG · JPEG · WebP · AVIF · DNG · CR2 · NEF · ARW · TIFF', W / 2, H / 2 + 12);
   }
 }
 
@@ -487,17 +793,40 @@ function render() {
   $('#zoomLbl').textContent = Math.round(S.view.zoom * 100) + '%';
 }
 
+/* --------------------------------------------------------------- geometry */
+// layer-local → world (pan, rotate, scale, mirror included)
+function layerToWorld(L, p) {
+  const mirror = L.id === 'back' && S.mirrorBack ? -1 : 1;
+  const sx = L.scale * (L.flipH ? -1 : 1) * mirror;
+  const sy = L.scale * (L.flipV ? -1 : 1);
+  const x = p.x * sx, y = p.y * sy;
+  const a = rad(L.rot), c = Math.cos(a), s = Math.sin(a);
+  return { x: L.x + x * c - y * s, y: L.y + x * s + y * c };
+}
+function worldToLayer(L, p) {
+  const mirror = L.id === 'back' && S.mirrorBack ? -1 : 1;
+  const sx = L.scale * (L.flipH ? -1 : 1) * mirror;
+  const sy = L.scale * (L.flipV ? -1 : 1);
+  const a = -rad(L.rot), c = Math.cos(a), s = Math.sin(a);
+  const dx = p.x - L.x, dy = p.y - L.y;
+  const rx = dx * c - dy * s, ry = dx * s + dy * c;
+  return { x: rx / (sx || 1e-9), y: ry / (sy || 1e-9) };
+}
+
 /* ---------------------------------------------------------------- fit view */
+function layerCorners(L) {
+  if (L.img) {
+    const W = L.img.width, H = L.img.height;
+    const pts = [];
+    for (const [u, v] of L.quad) pts.push(layerToWorld(L, { x: (u - .5) * W, y: (v - .5) * H }));
+    return pts;
+  }
+  return [];
+}
+
 function fitView() {
   const pts = [];
-  for (const l of Object.values(S.layers)) {
-    if (!l.img || !l.visible) continue;
-    const hw = l.img.width / 2 * l.scale, hh = l.img.height / 2 * l.scale, a = rad(l.rot);
-    for (const [sx, sy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
-      const px = sx * hw, py = sy * hh;
-      pts.push({ x: l.x + px * Math.cos(a) - py * Math.sin(a), y: l.y + px * Math.sin(a) + py * Math.cos(a) });
-    }
-  }
+  for (const l of Object.values(S.layers)) if (l.img && l.visible) pts.push(...layerCorners(l));
   const W = cv.clientWidth || 800, H = cv.clientHeight || 600;
   if (!pts.length) { S.view = { zoom: 1, tx: W / 2, ty: H / 2 }; render(); return; }
   const minx = Math.min(...pts.map(p => p.x)), maxx = Math.max(...pts.map(p => p.x));
@@ -510,28 +839,25 @@ function fitView() {
 }
 
 /* ------------------------------------------------------------------ images */
-// Any format the browser can decode works directly (PNG/JPEG/WebP/GIF/AVIF/BMP...).
-// Camera RAW (DNG/CR2/NEF/ARW/ORF/RAF/RW2) + TIFF/HEIC aren't decodable by canvas,
-// but almost all embed a full-size JPEG preview — pull that out and decode it.
 const RAW_EXT = /\.(dng|cr2|cr3|nef|arw|orf|raf|rw2|raw|sr2|srw|pef|3fr|erf|kdc|mrw|x3f|tif|tiff|heic|heif)$/i;
 
-// Scan a JPEG segment stream for the largest SOI..EOI span (the embedded preview).
+// Camera RAW / TIFF / HEIC aren't decodable by canvas, but almost all embed a
+// full-size JPEG preview. Pull the largest SOI..EOI span out and decode that.
 function extractJpegPreview(buf) {
   const u8 = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
   let best = null;
   for (let i = 0; i + 3 < u8.length; i++) {
     if (u8[i] !== 0xFF || u8[i + 1] !== 0xD8 || u8[i + 2] !== 0xFF) continue;
-    // walk segments to find this stream's EOI
     let j = i + 2, end = -1;
     while (j + 4 < u8.length) {
       if (u8[j] !== 0xFF) { j++; continue; }
       const m = u8[j + 1];
       if (m === 0xD9) { end = j + 2; break; }
-      if (m === 0xDA) { // start of scan: skip entropy-coded data to next non-stuffed marker
+      if (m === 0xDA) {
         j += 2;
         while (j + 1 < u8.length) {
           if (u8[j] === 0xFF && u8[j + 1] !== 0x00 && !(u8[j + 1] >= 0xD0 && u8[j + 1] <= 0xD7)) {
-            if (u8[j + 1] === 0xD9) { end = j + 2; }
+            if (u8[j + 1] === 0xD9) end = j + 2;
             break;
           }
           j++;
@@ -550,10 +876,15 @@ function extractJpegPreview(buf) {
   return best ? u8.subarray(best.start, best.end) : null;
 }
 
-// Decode any image file → data URL. Throws with a useful message if truly unsupported.
+function toPngCanvas(img) {
+  const c = document.createElement('canvas');
+  c.width = img.naturalWidth; c.height = img.naturalHeight;
+  c.getContext('2d').drawImage(img, 0, 0);
+  return c;
+}
+
 async function decodeImageFile(file) {
   const looksRaw = RAW_EXT.test(file.name) || /^(image\/(tiff|heic|heif|x-canonraw|x-nikonraw|x-sonyraw))$/.test(file.type);
-  // 1) let the browser try (covers png/jpg/webp/gif/avif/bmp/svg and any future codec)
   try {
     const url = URL.createObjectURL(file);
     try {
@@ -563,32 +894,24 @@ async function decodeImageFile(file) {
         i.src = url;
       });
       URL.revokeObjectURL(url);
-      // re-encode to PNG so canvas/EXIF orientation is baked in and the session is portable
-      const c = document.createElement('canvas');
-      c.width = img.naturalWidth; c.height = img.naturalHeight;
-      c.getContext('2d').drawImage(img, 0, 0);
-      return { src: c.toDataURL('image/png'), w: c.width, h: c.height, note: '' };
+      const c = toPngCanvas(img);   // bake EXIF orientation, make the project portable
+      return { src: c.toDataURL('image/png'), note: '' };
     } catch { URL.revokeObjectURL(url); }
   } catch { /* fall through */ }
 
-  // 2) RAW/TIFF/HEIC: extract the embedded JPEG preview
   if (looksRaw) {
     const u8 = new Uint8Array(await file.arrayBuffer());
     const jpeg = extractJpegPreview(u8);
     if (jpeg) {
-      const blob = new Blob([jpeg], { type: 'image/jpeg' });
-      const url = URL.createObjectURL(blob);
+      const url = URL.createObjectURL(new Blob([jpeg], { type: 'image/jpeg' }));
       const img = await new Promise((res, rej) => {
         const i = new Image();
         i.onload = () => res(i); i.onerror = () => rej(new Error('preview decode'));
         i.src = url;
       });
       URL.revokeObjectURL(url);
-      const c = document.createElement('canvas');
-      c.width = img.naturalWidth; c.height = img.naturalHeight;
-      c.getContext('2d').drawImage(img, 0, 0);
-      return { src: c.toDataURL('image/png'), w: c.width, h: c.height,
-        note: `RAW preview ${c.width}×${c.height}` };
+      const c = toPngCanvas(img);
+      return { src: c.toDataURL('image/png'), note: `RAW preview ${c.width}×${c.height}` };
     }
     throw new Error('no embedded preview found — export a JPEG/TIFF from your RAW converter');
   }
@@ -599,7 +922,6 @@ async function loadFile(file, layerId) {
   const out = await decodeImageFile(file);
   await setLayerSrc(layerId, out.src, file.name);
   if (out.note) status(`${file.name}: ${out.note}`);
-  return out;
 }
 
 function setLayerSrc(layerId, src, name) {
@@ -608,43 +930,85 @@ function setLayerSrc(layerId, src, name) {
     img.onload = () => {
       const L = S.layers[layerId], first = !L.img;
       L.img = img; L.src = src; L.name = name || L.name; L.visible = true;
+      L._sd = null; L._warp = null;
       if (first) {
         L.x = 0; L.y = 0; L.scale = 1; L.rot = 0; L.flipH = false; L.flipV = false;
         L.opacity = layerId === 'close' ? 1 : .8;
       }
-      syncCards(); fitView(); saveLocal(); res();
+      buildStack(); buildLayerEditor(); fitView(); saveLocal(); res();
     };
     img.onerror = () => rej(new Error('image decode failed'));
     img.src = src;
   });
 }
 
-/* ------------------------------------------------------------------- cards */
-const LAYER_META = { front: 'Front photo', back: 'Back photo', close: 'Close-up / label' };
+/* ---------------------------------------------------------- layer stack UI */
+const LAYER_META = { front: 'Front photo', back: 'Back photo', close: 'Close-up' };
 
-function buildCards() {
-  const host = $('#layerCards');
-  host.innerHTML = '';
-  for (const id of ['front', 'back', 'close']) {
+function buildStack() {
+  const host = $('#layerStack');
+  const rows = [];
+  for (const id of ['close', 'front', 'back']) {
     const L = S.layers[id];
-    const el = document.createElement('div');
-    el.className = 'card' + (S.active === id ? ' active' : '');
-    el.dataset.layer = id;
-    el.innerHTML = `
-      <div class="cardhead"><b>${LAYER_META[id]}</b>
-        <label class="mini-chk"><input type="checkbox" data-k="visible" ${L.visible ? 'checked' : ''}> on</label>
+    rows.push(`<div class="lay${S.active === id ? ' sel' : ''}${L.visible ? '' : ' off'}" data-layer="${id}">
+      <span class="eye" data-eye="${id}">${L.visible ? '◉' : '○'}</span>
+      <span class="nm">${esc(L.name || LAYER_META[id])}</span>
+      <span class="sub">${L.mask.on ? 'mask' : ''}${L.id === 'back' && S.mirrorBack ? ' ⇋' : ''}</span>
+    </div>`);
+  }
+  for (const t of [...S.traces].reverse()) {
+    rows.push(`<div class="lay${t.id === S.activeTrace ? ' sel' : ''}${t.visible ? '' : ' off'}" data-trace="${t.id}">
+      <span class="eye" data-teye="${t.id}">${t.visible ? '◉' : '○'}</span>
+      <span class="sw" style="background:${t.color}"></span>
+      <span class="nm">${esc(t.name)}</span>
+      <span class="sub">${t.pts.length}pt ${t.side === 'back' ? 'B' : 'F'}</span>
+    </div>`);
+  }
+  host.innerHTML = rows.join('');
+}
+
+$('#layerStack').addEventListener('click', e => {
+  const eye = e.target.closest('[data-eye]');
+  if (eye) {
+    const L = S.layers[eye.dataset.eye];
+    L.visible = !L.visible; buildStack(); render(); saveLocal(); return;
+  }
+  const teye = e.target.closest('[data-teye]');
+  if (teye) {
+    const t = S.traces.find(t => t.id === +teye.dataset.teye);
+    if (t) { t.visible = !t.visible; buildStack(); render(); saveLocal(); }
+    return;
+  }
+  const tl = e.target.closest('[data-trace]');
+  if (tl) { S.activeTrace = +tl.dataset.trace; S.active = null; buildStack(); buildLayerEditor(); render(); return; }
+  const l = e.target.closest('[data-layer]');
+  if (l) { S.active = l.dataset.layer; S.activeTrace = null; buildStack(); buildLayerEditor(); render(); }
+});
+
+/* --------------------------------------------------------- layer editor UI */
+function buildLayerEditor() {
+  const host = $('#layerEditor');
+  if (S.activeTrace != null) return buildTraceEditor(host);
+  const L = S.layers[S.active];
+  if (!L) { host.innerHTML = ''; return; }
+  const p = pxPerMm();
+  host.innerHTML = `
+    <div class="card">
+      <div class="row" style="margin:0 0 6px">
+        <label class="btn small">Load<input type="file" data-file accept="image/*,.dng,.cr2,.cr3,.nef,.arw,.orf,.raf,.rw2,.raw,.tif,.tiff,.heic,.heif"></label>
+        <span class="hint" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin:0">${esc(L.name || '—')}</span>
       </div>
-      <div class="filerow">
-        <label class="btn small">Load<input type="file" accept="image/*,.dng,.cr2,.cr3,.nef,.arw,.orf,.raf,.rw2,.raw,.tif,.tiff,.heic,.heif" data-file></label>
-        <span class="fname">${esc(L.name || '—')}</span>
-      </div>
-      <label class="sl">scale <span data-v="scale">${L.scale.toFixed(2)}</span>
+      <label class="sl">scale <span data-v id="v-scale">${L.scale.toFixed(2)}</span>
         <input type="range" data-k="scale" min="0.05" max="8" step="0.01" value="${L.scale}"></label>
-      <label class="sl">rotate <span data-v="rot">${L.rot.toFixed(1)}°</span>
+      <label class="sl">rotate <span data-v id="v-rot">${L.rot.toFixed(1)}°</span>
         <input type="range" data-k="rot" min="-180" max="180" step="0.5" value="${L.rot}"></label>
-      <label class="sl">opacity <span data-v="opacity">${Math.round(L.opacity * 100)}%</span>
+      <label class="sl">opacity <span data-v id="v-opacity">${Math.round(L.opacity * 100)}%</span>
         <input type="range" data-k="opacity" min="0" max="1" step="0.01" value="${L.opacity}"></label>
-      <div class="row" style="margin:5px 0 0">
+      <label class="sl">brightness <span data-v id="v-bright">${Math.round(L.bright * 100)}%</span>
+        <input type="range" data-k="bright" min="0.2" max="2.5" step="0.01" value="${L.bright}"></label>
+      <label class="sl">contrast <span data-v id="v-contrast">${Math.round(L.contrast * 100)}%</span>
+        <input type="range" data-k="contrast" min="0.2" max="3" step="0.01" value="${L.contrast}"></label>
+      <div class="row" style="margin:6px 0 0">
         <label class="mini-chk"><input type="checkbox" data-k="flipH" ${L.flipH ? 'checked' : ''}>flip H</label>
         <label class="mini-chk"><input type="checkbox" data-k="flipV" ${L.flipV ? 'checked' : ''}>flip V</label>
         <select data-k="blend" style="margin-left:auto;font-size:12px">
@@ -652,61 +1016,120 @@ function buildCards() {
           <option value="multiply">multiply</option>
           <option value="difference">difference</option>
         </select>
-      </div>`;
-    el.querySelector('select[data-k=blend]').value = L.blend;
-    host.appendChild(el);
-  }
+      </div>
+      <div class="row" style="margin-bottom:0">
+        <button type="button" data-act="persp" class="${S.persist && S.persist.layer === S.active ? 'on' : ''}">${S.persist && S.persist.layer === S.active ? 'done corners' : 'edit corners'}</button>
+        <button type="button" data-act="resetPersp">reset</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="row" style="margin:0 0 4px">
+        <label class="mini-chk"><input type="checkbox" data-mask="on" ${L.mask.on ? 'checked' : ''}>mask</label>
+        <select data-mask="kind" style="font-size:12px">
+          <option value="ellipse">ellipse</option><option value="rect">rect</option>
+        </select>
+        <label class="mini-chk"><input type="checkbox" data-mask="invert" ${L.mask.invert ? 'checked' : ''}>invert</label>
+      </div>
+      <label class="sl">feather <span data-v id="v-feather">${Math.round(L.mask.feather * 100)}%</span>
+        <input type="range" data-mask="feather" min="0" max="1" step="0.01" value="${L.mask.feather}"></label>
+      <p class="hint" style="margin-bottom:0">▢ mask tool on canvas sets the window.</p>
+    </div>`;
+  host.querySelector('select[data-k=blend]').value = L.blend;
+  host.querySelector('select[data-mask=kind]').value = L.mask.kind;
 }
 
-const fmtVal = (L, k) => k === 'scale' ? L.scale.toFixed(2)
-  : k === 'rot' ? L.rot.toFixed(1) + '°' : Math.round(L.opacity * 100) + '%';
+function buildTraceEditor(host) {
+  const t = S.traces.find(t => t.id === S.activeTrace);
+  if (!t) { host.innerHTML = ''; return; }
+  host.innerHTML = `
+    <div class="card">
+      <div class="row" style="margin:0 0 5px">
+        <input data-t="name" value="${esc(t.name)}" style="flex:1;font-size:12px" aria-label="trace name">
+        <input type="color" data-t="color" value="${t.color}" aria-label="trace color">
+        <button type="button" data-tdel="${t.id}" title="delete trace">✕</button>
+      </div>
+      <div class="row" style="margin:0 0 5px">
+        <select data-t="side" style="font-size:12px"><option value="front">front</option><option value="back">back</option></select>
+        <label class="sl" style="flex:1;margin:0">width
+          <input type="range" data-t="width" min="1" max="20" step="0.5" value="${t.width}"></label>
+      </div>
+      <p class="hint" style="margin:0">⌇ trace tool: click to add waypoints, <kbd>Enter</kbd> to finish. Drag a dot to move it.</p>
+    </div>`;
+  host.querySelector('select[data-t=side]').value = t.side;
+}
 
-function syncCards() {
-  for (const card of document.querySelectorAll('#layerCards .card')) {
-    const L = S.layers[card.dataset.layer];
-    card.classList.toggle('active', S.active === card.dataset.layer);
-    card.querySelector('.fname').textContent = L.name || '—';
-    for (const inp of card.querySelectorAll('[data-k]')) {
-      const k = inp.dataset.k;
-      if (inp.type === 'checkbox') inp.checked = !!L[k]; else inp.value = L[k];
-      const out = card.querySelector(`[data-v="${k}"]`);
-      if (out) out.textContent = fmtVal(L, k);
+$('#layerEditor').addEventListener('input', e => {
+  const L = S.layers[S.active];
+  if (e.target.dataset.k && L) {
+    const k = e.target.dataset.k;
+    if (k === 'flipH' || k === 'flipV') L[k] = e.target.checked;
+    else if (k === 'blend') L.blend = e.target.value;
+    else {
+      L[k] = num(e.target.value, L[k]);
+      if (k === 'scale' || k === 'rot') L._warp = L._warp;   // geometry comes from the transform
     }
-    card.querySelector('select[data-k=blend]').value = L.blend;
+    const out = $('#v-' + k);
+    if (out) out.textContent = k === 'scale' ? L.scale.toFixed(2)
+      : k === 'rot' ? L.rot.toFixed(1) + '°' : Math.round(L[k] * 100) + '%';
+    render(); saveLocal(); return;
   }
-}
-
-$('#layerCards').addEventListener('input', e => {
-  const card = e.target.closest('[data-layer]'); if (!card) return;
-  const L = S.layers[card.dataset.layer], k = e.target.dataset.k; if (!k) return;
-  if (k === 'visible' || k === 'flipH' || k === 'flipV') L[k] = e.target.checked;
-  else if (k === 'blend') L.blend = e.target.value;
-  else L[k] = num(e.target.value, L[k]);
-  const out = card.querySelector(`[data-v="${k}"]`);
-  if (out) out.textContent = fmtVal(L, k);
-  render(); saveLocal();
-});
-$('#layerCards').addEventListener('change', e => {
-  if (!e.target.matches('input[type=file]')) return;
-  const card = e.target.closest('[data-layer]'), f = e.target.files[0];
-  if (f && card) loadFile(f, card.dataset.layer).catch(err => status('load failed: ' + err.message));
-});
-$('#layerCards').addEventListener('pointerdown', e => {
-  const card = e.target.closest('[data-layer]');
-  if (!card || e.target.closest('input,select,label')) return;
-  S.active = card.dataset.layer; syncCards();
+  const mk = e.target.dataset.mask;
+  if (mk && L) {
+    if (mk === 'on' || mk === 'invert') L.mask[mk] = e.target.checked;
+    else if (mk === 'kind') L.mask.kind = e.target.value;
+    else L.mask[mk] = num(e.target.value, L.mask[mk]);
+    const out = $('#v-feather');
+    if (out && mk === 'feather') out.textContent = Math.round(L.mask.feather * 100) + '%';
+    render(); saveLocal(); return;
+  }
+  const tk = e.target.dataset.t;
+  if (tk) {
+    const t = S.traces.find(t => t.id === S.activeTrace);
+    if (!t) return;
+    t[tk] = tk === 'width' ? num(e.target.value, t.width) : e.target.value;
+    buildStack(); render(); saveLocal();
+  }
 });
 
-/* -------------------------------------------------------------- tools / ui */
+$('#layerEditor').addEventListener('change', e => {
+  if (e.target.matches('input[type=file]')) {
+    const f = e.target.files[0];
+    if (f) loadFile(f, S.active).catch(err => status('load failed: ' + err.message));
+    return;
+  }
+  if (e.target.dataset.t === 'side') { render(); saveLocal(); }
+});
+
+$('#layerEditor').addEventListener('click', e => {
+  const act = e.target.dataset.act;
+  if (act === 'persp') {
+    S.persist = S.persist && S.persist.layer === S.active ? null : { layer: S.active };
+    buildLayerEditor(); render(); return;
+  }
+  if (act === 'resetPersp') {
+    const L = S.layers[S.active];
+    L.quad = [[0,0],[1,0],[1,1],[0,1]]; L._warp = null;
+    render(); saveLocal(); return;
+  }
+  const del = e.target.dataset.tdel;
+  if (del) {
+    S.traces = S.traces.filter(t => t.id !== +del);
+    S.activeTrace = null; buildStack(); buildLayerEditor(); render(); saveLocal();
+  }
+});
+
+/* ------------------------------------------------------------ tools / ui */
 document.querySelectorAll('#toolbar [data-tool]').forEach(b => {
   b.addEventListener('click', () => {
     S.tool = b.dataset.tool;
     document.querySelectorAll('#toolbar [data-tool]').forEach(x => x.classList.toggle('on', x === b));
-    cv.style.cursor = S.tool === 'pan' ? 'grab' : S.tool === 'pad' ? 'crosshair' : 'move';
+    cv.style.cursor = S.tool === 'pan' ? 'grab' : S.tool === 'pad' ? 'crosshair' : 'cell';
+    render();
   });
 });
 $('#padSide').addEventListener('change', e => S.padSide = e.target.value);
-$('#mirrorBack').addEventListener('change', e => { S.mirrorBack = e.target.checked; render(); saveLocal(); });
+$('#mirrorBack').addEventListener('change', e => { S.mirrorBack = e.target.checked; buildStack(); render(); saveLocal(); });
 const bindGuide = (sel, key) => $(sel).addEventListener('change', e => { S.guides[key] = e.target.checked; render(); saveLocal(); });
 bindGuide('#gGrid', 'grid'); bindGuide('#gCross', 'cross'); bindGuide('#gRulers', 'rulers');
 bindGuide('#gPin1', 'pin1'); bindGuide('#gOutline', 'outline');
@@ -715,6 +1138,25 @@ $('#zoom1').addEventListener('click', () => {
   const W = cv.clientWidth / 2, H = cv.clientHeight / 2;
   const w = { x: (W - S.view.tx) / S.view.zoom, y: (H - S.view.ty) / S.view.zoom };
   S.view.zoom = 1; S.view.tx = W - w.x; S.view.ty = H - w.y; render();
+});
+$('#useMm').addEventListener('change', e => { S.useMm = e.target.checked; render(); saveLocal(); });
+$('#calClear').addEventListener('click', () => { S.cal = null; S.measure = null; updateCalInfo(); render(); saveLocal(); });
+$('#calMm').addEventListener('change', () => { updateCalInfo(); render(); });
+
+function updateCalInfo() {
+  const p = pxPerMm();
+  $('#calInfo').textContent = p > 0
+    ? `1 mm = ${p.toFixed(3)} px · 1 px = ${mmPerPx().toFixed(4)} mm`
+    : 'no calibration — draw with the ↔ ruler, then write the real length';
+}
+
+$('#addTrace').addEventListener('click', () => {
+  const id = S.nextTraceId++;
+  const PAL = ['#22d3ee', '#f472b6', '#a3e635', '#fbbf24', '#818cf8', '#fb7185', '#34d399'];
+  S.traces.push({ id, name: 'trace ' + id, color: PAL[(id - 1) % PAL.length],
+    side: S.padSide, visible: true, width: 3, pts: [] });
+  S.activeTrace = id; S.active = null;
+  buildStack(); buildLayerEditor(); render(); saveLocal();
 });
 
 /* --------------------------------------------------------------- MCU inputs */
@@ -728,9 +1170,44 @@ $('#mcuN').addEventListener('change', e => {
   $('#mcuN').value = S.mcu.n; ensurePins(); mcuSync();
 });
 $('#mcuName').addEventListener('input', e => { S.mcu.name = e.target.value; saveLocal(); });
-$('#mcuW').addEventListener('input', e => { S.mcu.w = Math.max(10, num(e.target.value, 220)); render(); saveLocal(); });
-$('#mcuH').addEventListener('input', e => { S.mcu.h = Math.max(10, num(e.target.value, 220)); render(); saveLocal(); });
+$('#mcuW').addEventListener('input', e => { S.mcu.w = Math.max(2, num(e.target.value, 220)); render(); saveLocal(); });
+$('#mcuH').addEventListener('input', e => { S.mcu.h = Math.max(2, num(e.target.value, 220)); render(); saveLocal(); });
 $('#mcuRot').addEventListener('input', e => { S.mcu.rot = num(e.target.value, 0); render(); saveLocal(); });
+
+// uniform scale: keeps the center, multiplies both sides
+let mcuScaleBase = null;
+$('#mcuScale').addEventListener('pointerdown', () => { mcuScaleBase = { w: S.mcu.w, h: S.mcu.h }; });
+$('#mcuScale').addEventListener('input', e => {
+  const f = num(e.target.value, 1);
+  const base = mcuScaleBase || { w: S.mcu.base || 220, h: S.mcu.h / (S.mcu._lastF || 1) };
+  mcuScaleBase = mcuScaleBase || base;
+  S.mcu._lastF = f;
+  S.mcu.w = Math.max(2, mcuScaleBase.w * f);
+  S.mcu.h = Math.max(2, mcuScaleBase.h * f);
+  $('#mcuW').value = Math.round(S.mcu.w);
+  $('#mcuH').value = Math.round(S.mcu.h);
+  $('#mcuScaleV').textContent = f.toFixed(2);
+  render(); saveLocal();
+});
+$('#mcuScale').addEventListener('change', () => { mcuScaleBase = null; $('#mcuScale').value = 1; $('#mcuScaleV').textContent = '1.00'; });
+
+$('#mcuToMm').addEventListener('click', () => {
+  const p = pxPerMm();
+  if (!p) return status('calibrate first (↔ ruler + board dimension)');
+  const w = S.mcu.w / p, h = S.mcu.h / p;
+  status(`package is ${w.toFixed(2)} × ${h.toFixed(2)} mm — compare with the datasheet`);
+});
+$('#mcuFromMm').addEventListener('click', () => {
+  const p = pxPerMm();
+  if (!p) return status('calibrate first (↔ ruler + board dimension)');
+  const mm = parseFloat(prompt('Package width in mm?', '5'));
+  if (!Number.isFinite(mm) || mm <= 0) return;
+  const ratio = S.mcu.h / S.mcu.w;
+  S.mcu.w = mm * p; S.mcu.h = S.mcu.w * ratio;
+  $('#mcuW').value = Math.round(S.mcu.w); $('#mcuH').value = Math.round(S.mcu.h);
+  render(); saveLocal();
+});
+
 $('#mcuApply').addEventListener('click', () => {
   parsePinCsv($('#mcuCsv').value); mcuSync(); status('pin table applied');
 });
@@ -772,15 +1249,52 @@ function hitPin(w) {
   }
   return best;
 }
+// returns {trace, i} of the nearest waypoint within reach
+function hitWaypoint(w) {
+  const r = 12 / S.view.zoom;
+  for (const t of S.traces) {
+    if (!t.visible) continue;
+    for (let i = 0; i < t.pts.length; i++) {
+      if (Math.hypot(t.pts[i].x - w.x, t.pts[i].y - w.y) < r) return { trace: t, i };
+    }
+  }
+  return null;
+}
+function hitPersp(w) {
+  if (!S.persist) return null;
+  const L = S.layers[S.persist.layer];
+  if (!L || !L.img) return null;
+  const r = 14 / S.view.zoom;
+  for (let i = 0; i < 4; i++) {
+    const [u, v] = L.quad[i];
+    const p = layerToWorld(L, { x: (u - .5) * L.img.width, y: (v - .5) * L.img.height });
+    if (Math.hypot(p.x - w.x, p.y - w.y) < r) return i;
+  }
+  return null;
+}
+function hitMask(w) {
+  const r = 14 / S.view.zoom;
+  for (const id of LAYER_ORDER) {
+    const L = S.layers[id];
+    if (!L.mask.on || !L.img) continue;
+    const m = L.mask;
+    const insideX = Math.abs(w.x - m.x) < Math.max(m.rx, r);
+    const insideY = Math.abs(w.y - m.y) < Math.max(m.ry, r);
+    if (insideX && insideY) return L;
+  }
+  return null;
+}
 function mcuLocal(w) {
   const m = S.mcu, a = -rad(m.rot), c = Math.cos(a), s = Math.sin(a);
   const dx = w.x - m.x, dy = w.y - m.y;
   return { x: dx * c - dy * s, y: dx * s + dy * c };
 }
 function mcuHit(w) {
-  const m = S.mcu, t = 14 / S.view.zoom, l = mcuLocal(w);
+  const m = S.mcu, t = 16 / S.view.zoom, l = mcuLocal(w);
   if (Math.hypot(l.x, l.y + m.h / 2 + 26 / S.view.zoom) < t) return 'rot';
-  if (Math.hypot(l.x - m.w / 2, l.y - m.h / 2) < t) return 'resize';
+  for (const [cx, cy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
+    if (Math.hypot(l.x - cx * m.w / 2, l.y - cy * m.h / 2) < t) return 'resize';
+  }
   if (Math.abs(l.x) < m.w / 2 && Math.abs(l.y) < m.h / 2) return 'move';
   return null;
 }
@@ -804,12 +1318,55 @@ cv.addEventListener('pointerdown', e => {
   cv.setPointerCapture(e.pointerId);
   const w = toWorld(e);
 
-  // Alt+drag moves the active layer (pan/scale/rotate are per-layer, so is position)
   if (e.altKey) {
-    const L = S.layers[S.active];
-    drag = { type: 'layer', id: S.active, dx: w.x - L.x, dy: w.y - L.y };
+    if (S.activeTrace == null && S.active) {
+      const L = S.layers[S.active];
+      drag = { type: 'layer', id: S.active, dx: w.x - L.x, dy: w.y - L.y };
+      return;
+    }
+  }
+
+  // perspective corner drag wins over everything else
+  const pi = hitPersp(w);
+  if (pi != null && S.persist) {
+    drag = { type: 'persp', layer: S.persist.layer, corner: pi };
     return;
   }
+
+  if (S.tool === 'measure') {
+    if (!S.measure || (S.measure.a && S.measure.b)) S.measure = { a: w, b: null };
+    else S.measure.b = w;
+    drag = { type: 'measure' };
+    if (S.measure.a && S.measure.b) calibrateFromMeasure();
+    render(); return;
+  }
+
+  if (S.tool === 'mask') {
+    const L = hitMask(w) || S.layers[S.active];
+    if (L) {
+      L.mask.on = true;
+      drag = { type: 'mask', layer: L.id, ax: w.x, ay: w.y };
+      buildStack(); buildLayerEditor(); render();
+    }
+    return;
+  }
+
+  if (S.tool === 'trace') {
+    const wp = hitWaypoint(w);
+    if (wp) { S.activeTrace = wp.trace.id; drag = { type: 'wpt', trace: wp.trace, i: wp.i }; return; }
+    let t = S.traces.find(t => t.id === S.activeTrace);
+    if (!t) {
+      const id = S.nextTraceId++;
+      const PAL = ['#22d3ee', '#f472b6', '#a3e635', '#fbbf24', '#818cf8', '#fb7185', '#34d399'];
+      t = { id, name: 'trace ' + id, color: PAL[(id - 1) % PAL.length], side: S.padSide,
+        visible: true, width: 3, pts: [] };
+      S.traces.push(t); S.activeTrace = id;
+    }
+    t.pts.push({ x: w.x, y: w.y });
+    buildStack(); buildLayerEditor(); render(); saveLocal();
+    return;
+  }
+
   if (S.tool === 'pad' && !hitPad(w)) {
     const p = addPad(w); drag = { type: 'pad', id: p.id, dx: 0, dy: 0 }; return;
   }
@@ -836,35 +1393,82 @@ cv.addEventListener('pointerdown', e => {
 
 cv.addEventListener('pointermove', e => {
   const w = toWorld(e);
-  $('#coords').textContent = `${Math.round(w.x)}, ${Math.round(w.y)} px`;
+  $('#coords').textContent = S.useMm && pxPerMm() > 0
+    ? `${(w.x * mmPerPx()).toFixed(2)}, ${(w.y * mmPerPx()).toFixed(2)} mm`
+    : `${Math.round(w.x)}, ${Math.round(w.y)} px`;
   if (!drag) return;
-  if (drag.type === 'view') {
-    S.view.tx = drag.ox + (e.clientX - drag.sx);
-    S.view.ty = drag.oy + (e.clientY - drag.sy);
-  } else if (drag.type === 'pad') {
-    const p = S.pads.find(p => p.id === drag.id);
-    if (p) { p.x = w.x - drag.dx; p.y = w.y - drag.dy; }
-  } else if (drag.type === 'layer') {
-    const L = S.layers[drag.id];
-    if (L) { L.x = w.x - drag.dx; L.y = w.y - drag.dy; }
-  } else if (drag.type === 'pin1') {
-    S.pin1.x = w.x - drag.dx; S.pin1.y = w.y - drag.dy;
-  } else if (drag.type === 'mcu-move') {
-    S.mcu.x = w.x - drag.dx; S.mcu.y = w.y - drag.dy;
-  } else if (drag.type === 'mcu-rot') {
-    S.mcu.rot = Math.round(Math.atan2(w.y - S.mcu.y, w.x - S.mcu.x) * 180 / Math.PI + 90);
-    $('#mcuRot').value = S.mcu.rot;
-  } else if (drag.type === 'mcu-resize') {
-    const l = mcuLocal(w);
-    S.mcu.w = clamp(Math.round(Math.abs(l.x) * 2), 20, 4000);
-    S.mcu.h = clamp(Math.round(Math.abs(l.y) * 2), 20, 4000);
-    $('#mcuW').value = S.mcu.w; $('#mcuH').value = S.mcu.h;
+
+  switch (drag.type) {
+    case 'view':
+      S.view.tx = drag.ox + (e.clientX - drag.sx);
+      S.view.ty = drag.oy + (e.clientY - drag.sy);
+      break;
+    case 'pad': {
+      const p = S.pads.find(p => p.id === drag.id);
+      if (p) { p.x = w.x - drag.dx; p.y = w.y - drag.dy; }
+      break;
+    }
+    case 'layer': {
+      const L = S.layers[drag.id];
+      if (L) { L.x = w.x - drag.dx; L.y = w.y - drag.dy; }
+      break;
+    }
+    case 'pin1':
+      S.pin1.x = w.x - drag.dx; S.pin1.y = w.y - drag.dy;
+      break;
+    case 'mcu-move':
+      S.mcu.x = w.x - drag.dx; S.mcu.y = w.y - drag.dy;
+      break;
+    case 'mcu-rot':
+      S.mcu.rot = Math.round(Math.atan2(w.y - S.mcu.y, w.x - S.mcu.x) * 180 / Math.PI + 90);
+      $('#mcuRot').value = S.mcu.rot;
+      break;
+    case 'mcu-resize': {
+      const l = mcuLocal(w);
+      S.mcu.w = clamp(Math.round(Math.abs(l.x) * 2), 6, 8000);
+      S.mcu.h = clamp(Math.round(Math.abs(l.y) * 2), 6, 8000);
+      $('#mcuW').value = S.mcu.w; $('#mcuH').value = S.mcu.h;
+      break;
+    }
+    case 'persp': {
+      const L = S.layers[drag.layer];
+      if (!L || !L.img) break;
+      const l = worldToLayer(L, w);
+      const u = clamp(l.x / L.img.width + .5, -0.9, 1.9);
+      const v = clamp(l.y / L.img.height + .5, -0.9, 1.9);
+      L.quad[drag.corner] = [u, v];
+      L._warp = null;
+      break;
+    }
+    case 'mask': {
+      const L = S.layers[drag.layer];
+      if (!L) break;
+      L.mask.x = (drag.ax + w.x) / 2;
+      L.mask.y = (drag.ay + w.y) / 2;
+      L.mask.rx = Math.max(4, Math.abs(w.x - drag.ax) / 2);
+      L.mask.ry = Math.max(4, Math.abs(w.y - drag.ay) / 2);
+      break;
+    }
+    case 'wpt':
+      if (drag.trace.pts[drag.i]) { drag.trace.pts[drag.i].x = w.x; drag.trace.pts[drag.i].y = w.y; }
+      break;
+    case 'measure':
+      if (S.measure && S.measure.a) S.measure.b = w;
+      break;
   }
   render();
 });
 
-cv.addEventListener('pointerup', () => { drag = null; cv.style.cursor = S.tool === 'pan' ? 'grab' : 'crosshair'; saveLocal(); });
+cv.addEventListener('pointerup', () => { drag = null; cv.style.cursor = S.tool === 'pan' ? 'grab' : S.tool === 'pad' ? 'crosshair' : 'cell'; saveLocal(); });
 cv.addEventListener('pointercancel', () => { drag = null; });
+
+cv.addEventListener('dblclick', e => {
+  if (S.tool === 'trace') { S.activeTrace = null; buildStack(); render(); return; }
+  const p = hitPad(toWorld(e));
+  if (!p) return;
+  const l = prompt('Pad label:', p.label);
+  if (l !== null) { p.label = l; renderTables(); render(); saveLocal(); }
+});
 
 cv.addEventListener('wheel', e => {
   e.preventDefault();
@@ -875,12 +1479,20 @@ cv.addEventListener('wheel', e => {
   render();
 }, { passive: false });
 
-cv.addEventListener('dblclick', e => {
-  const p = hitPad(toWorld(e));
-  if (!p) return;
-  const l = prompt('Pad label:', p.label);
-  if (l !== null) { p.label = l; renderTables(); render(); saveLocal(); }
-});
+function calibrateFromMeasure() {
+  const m = S.measure;
+  if (!m || !m.a || !m.b) return;
+  const typed = parseFloat($('#calMm').value);
+  const px = dist(m.a, m.b);
+  const mm = Number.isFinite(typed) && typed > 0
+    ? typed
+    : parseFloat(prompt('Real length of that line, in mm?', (px * mmPerPx()).toFixed(2) || '45'));
+  if (!Number.isFinite(mm) || mm <= 0) { status('measurement dropped — no length given'); return; }
+  S.cal = { a: m.a, b: m.b, mm };
+  updateCalInfo();
+  status(`${px.toFixed(1)} px = ${mm} mm  →  ${(px / mm).toFixed(3)} px/mm`);
+  saveLocal();
+}
 
 /* ------------------------------------------------------------------ tables */
 function renderPins() {
@@ -908,7 +1520,7 @@ function renderPins() {
 
 function renderPads() {
   const host = $('#padList');
-  if (!S.pads.length) { host.innerHTML = '<div class="empty">No pads yet — press <b>⊕ Pad</b> and click the photo.</div>'; return; }
+  if (!S.pads.length) { host.innerHTML = '<div class="empty">No pads yet — press <b>⊕ pad</b> and click the photo.</div>'; return; }
   host.innerHTML = S.pads.map(p => `
     <div class="padrow${S.selectedPad === p.id ? ' sel' : ''}" data-pad="${p.id}">
       <span class="pill">#${p.id}</span>
@@ -1005,12 +1617,16 @@ addEventListener('keydown', e => {
       render(); break;
     }
     case 'r': case 'R': {
+      if (!S.active) break;
       const L = S.layers[S.active];
       L.rot = clamp(L.rot + (e.shiftKey ? -1 : 1), -180, 180);
-      syncCards(); render(); saveLocal(); break;
+      buildLayerEditor(); render(); saveLocal(); break;
     }
     case 'f': case 'F': fitView(); break;
-    case 'Escape': S.selectedPad = null; renderTables(); render(); break;
+    case 'Enter': S.activeTrace = null; buildStack(); buildLayerEditor(); render(); break;
+    case 'Escape':
+      S.selectedPad = null; S.persist = null; S.activeTrace = null;
+      buildStack(); buildLayerEditor(); renderTables(); render(); break;
     case 'Delete': case 'Backspace':
       if (pad) { e.preventDefault(); deletePad(pad.id); } break;
     case 'ArrowLeft': case 'ArrowRight': case 'ArrowUp': case 'ArrowDown': {
@@ -1043,44 +1659,64 @@ function sessionObject(withImages = true) {
   const layers = {};
   for (const [id, L] of Object.entries(S.layers)) {
     layers[id] = { name: L.name, src: withImages ? L.src : null, x: L.x, y: L.y, scale: L.scale,
-      rot: L.rot, flipH: L.flipH, flipV: L.flipV, opacity: L.opacity, blend: L.blend, visible: L.visible };
+      rot: L.rot, flipH: L.flipH, flipV: L.flipV, opacity: L.opacity, blend: L.blend, visible: L.visible,
+      bright: L.bright, contrast: L.contrast, quad: L.quad, mask: L.mask };
   }
   return {
-    app: 'BoardExplorer', version: 1, savedAt: new Date().toISOString(), project: S.project,
+    app: 'BoardExplorer', version: 2, savedAt: new Date().toISOString(), project: S.project,
     mirrorBack: S.mirrorBack, layers, pads: S.pads, nextId: S.nextId,
-    mcu: S.mcu, links: S.links, view: S.view, pin1: S.pin1, guides: S.guides,
+    mcu: { name: S.mcu.name, n: S.mcu.n, x: S.mcu.x, y: S.mcu.y, w: S.mcu.w, h: S.mcu.h,
+      rot: S.mcu.rot, pins: S.mcu.pins },
+    links: S.links, traces: S.traces, nextTraceId: S.nextTraceId,
+    cal: S.cal, useMm: S.useMm,
+    view: S.view, pin1: S.pin1, guides: S.guides,
   };
 }
 
 async function restoreSession(d) {
   if (!d || d.app !== 'BoardExplorer') throw new Error('not a BoardExplorer project');
   S.project = d.project || (d.layers?.front?.name || 'untitled').replace(/\.[^.]+$/, '') || 'untitled';
-  S.mirrorBack = !!d.mirrorBack;
+  S.mirrorBack = d.mirrorBack !== false;
   S.pads = d.pads || [];
   S.nextId = d.nextId || (Math.max(0, ...S.pads.map(p => p.id)) + 1);
   S.links = d.links || []; S.selectedPad = null;
   Object.assign(S.mcu, d.mcu || {}); ensurePins();
+  S.traces = d.traces || [];
+  S.nextTraceId = d.nextTraceId || (Math.max(0, ...S.traces.map(t => t.id)) + 1);
+  S.activeTrace = null;
+  S.cal = d.cal || null;
+  S.useMm = !!d.useMm;
   S.pin1 = d.pin1 || S.pin1;
   Object.assign(S.guides, d.guides || {});
   for (const id of ['front', 'back', 'close']) {
     const src = (d.layers && d.layers[id]) || {};
     const L = S.layers[id];
-    Object.assign(L, src, { img: null, src: null });
+    Object.assign(L, {
+      name: src.name || '', x: num(src.x, 0), y: num(src.y, 0), scale: num(src.scale, 1),
+      rot: num(src.rot, 0), flipH: !!src.flipH, flipV: !!src.flipV,
+      opacity: num(src.opacity, .8), blend: src.blend || 'source-over', visible: src.visible !== false,
+      bright: num(src.bright, 1), contrast: num(src.contrast, 1),
+      quad: Array.isArray(src.quad) && src.quad.length === 4 ? src.quad : [[0,0],[1,0],[1,1],[0,1]],
+      mask: Object.assign({ on: false, kind: 'ellipse', x: 0, y: 0, rx: 120, ry: 120, feather: .15, invert: false }, src.mask || {}),
+      img: null, src: null, _sd: null, _warp: null,
+    });
     if (src.src) await setLayerSrc(id, src.src, src.name);
   }
   Object.assign(S.view, d.view || {});
-  refreshUi(); render();
+  refreshUi(); updateCalInfo(); render();
 }
 
 function refreshUi() {
-  syncCards();
   $('#projName').value = S.project;
   $('#mirrorBack').checked = S.mirrorBack;
+  $('#useMm').checked = S.useMm;
   $('#gGrid').checked = S.guides.grid; $('#gCross').checked = S.guides.cross;
   $('#gRulers').checked = S.guides.rulers; $('#gPin1').checked = S.guides.pin1;
   $('#gOutline').checked = S.guides.outline;
   $('#mcuName').value = S.mcu.name; $('#mcuN').value = S.mcu.n;
-  $('#mcuW').value = S.mcu.w; $('#mcuH').value = S.mcu.h; $('#mcuRot').value = S.mcu.rot;
+  $('#mcuW').value = Math.round(S.mcu.w); $('#mcuH').value = Math.round(S.mcu.h);
+  $('#mcuRot').value = S.mcu.rot;
+  buildStack(); buildLayerEditor();
   renderTables();
 }
 
@@ -1093,10 +1729,12 @@ $('#loadJSON').addEventListener('change', async e => {
   const f = e.target.files[0]; if (!f) return;
   try {
     await restoreSession(JSON.parse(await f.text()));
-    if (!S.project || S.project === 'untitled') { S.project = (f.name || '').replace(/\.board\.json$|\.json$/i, ''); $('#projName').value = S.project; }
+    if (!S.project || S.project === 'untitled') {
+      S.project = (f.name || '').replace(/\.board\.json$|\.json$/i, '');
+      $('#projName').value = S.project;
+    }
     status('project opened: ' + S.project);
-  }
-  catch (err) { status('open failed: ' + err.message); }
+  } catch (err) { status('open failed: ' + err.message); }
   e.target.value = '';
 });
 $('#savePNG').addEventListener('click', () => {
@@ -1104,7 +1742,7 @@ $('#savePNG').addEventListener('click', () => {
   const c = document.createElement('canvas');
   c.width = W * dpr; c.height = H * dpr;
   paint(c.getContext('2d'), W, H, dpr, S.view.zoom, S.view.tx, S.view.ty, false);
-  c.toBlob(b => download('board-overlay.png', b, 'image/png'), 'image/png');
+  c.toBlob(b => download(projSlug() + '-overlay.png', b, 'image/png'), 'image/png');
 });
 $('#saveCSV').addEventListener('click', () => {
   const q = s => '"' + String(s ?? '').replace(/"/g, '""') + '"';
@@ -1113,7 +1751,7 @@ $('#saveCSV').addEventListener('click', () => {
     const l = linkOf(p.id), pin = l ? S.mcu.pins[l.pin - 1] : null;
     rows.push([p.id, p.side, p.label, p.notes, l ? l.pin : '', pin ? pin.name : '', pin ? pin.fn : '', l ? l.note : '']);
   }
-  download('pad-mapping.csv', rows.map(r => r.map(q).join(',')).join('\n'), 'text/csv');
+  download(projSlug() + '-pads.csv', rows.map(r => r.map(q).join(',')).join('\n'), 'text/csv');
 });
 
 /* ------------------------------------------------------------------ status */
@@ -1132,15 +1770,17 @@ function saveLocal() {
     try { localStorage.setItem('boardexplorer.session', JSON.stringify(sessionObject(true))); }
     catch {
       try { localStorage.setItem('boardexplorer.session', JSON.stringify(sessionObject(false))); }
-      catch { status('autosave failed (quota) — use Save JSON'); }
+      catch { status('autosave failed (quota) — use Save project'); }
     }
   }, 500);
 }
 
 /* -------------------------------------------------------------------- boot */
 ensurePins();
-buildCards();
+buildStack();
+buildLayerEditor();
 renderTables();
+updateCalInfo();
 render();
 
 new ResizeObserver(render).observe($('#stage'));
@@ -1148,7 +1788,7 @@ new ResizeObserver(render).observe($('#stage'));
 (async function boot() {
   try {
     const raw = localStorage.getItem('boardexplorer.session');
-    if (raw) { await restoreSession(JSON.parse(raw)); status('restored last session'); }
+    if (raw) { await restoreSession(JSON.parse(raw)); status('restored last project'); }
   } catch { /* fresh start */ }
   if (location.search.includes('selftest')) selftest();
 })();
@@ -1159,17 +1799,53 @@ function selftest() {
   const p = pinLayout(m);
   console.assert(p.length === 32, 'pin count', p.length);
   console.assert(new Set(p.map(q => q.n)).size === 32, 'pin numbers unique');
-  console.assert(p.every(q => Math.abs(Math.abs(q.x) - 100) < 1e-6 || Math.abs(Math.abs(q.y) - 100) < 1e-6), 'pins sit on the perimeter');
-  console.assert(p[0].n === 1 && p[0].side === 'left' && p[0].y < 0, 'pin 1 = top of left edge');
-  console.assert(p[31].n === 32 && p[31].side === 'top', 'pin 32 = top edge after one CCW lap');
+  console.assert(p.every(q => Math.abs(Math.abs(q.x) - 100) < 1e-6 || Math.abs(Math.abs(q.y) - 100) < 1e-6), 'pins on perimeter');
+  console.assert(p[0].n === 1 && p[0].side === 'left' && p[0].y < 0, 'pin 1 top of left edge');
+  console.assert(p[31].n === 32 && p[31].side === 'top', 'pin 32 after one CCW lap');
   const ring = pinLayout({ ...m, n: 30 });
-  console.assert(ring.length === 30 && ring[0].side === 'ring', 'ring fallback when N%4 !== 0');
+  console.assert(ring.length === 30 && ring[0].side === 'ring', 'ring fallback for N%4');
   const r = xf({ ...m, rot: 90 }, { x: 10, y: 0 });
-  console.assert(Math.abs(r.x) < 1e-6 && Math.abs(r.y - 10) < 1e-6, 'rotation math', r);
+  console.assert(Math.abs(r.x) < 1e-6 && Math.abs(r.y - 10) < 1e-6, 'rotation math');
+
+  // homography: unit square corners must land on the quad corners
+  const quad = [{x:10,y:20},{x:210,y:0},{x:190,y:180},{x:0,y:160}];
+  const M = homoSqToQuad(quad);
+  const apply = (u, v) => {
+    const w = M[6]*u + M[7]*v + M[8];
+    return { x: (M[0]*u + M[1]*v + M[2]) / w, y: (M[3]*u + M[4]*v + M[5]) / w };
+  };
+  const expect = [[0,0],[1,0],[1,1],[0,1]];
+  let homoOk = true;
+  for (let i = 0; i < 4; i++) {
+    const got = apply(expect[i][0], expect[i][1]);
+    if (Math.abs(got.x - quad[i].x) > 1e-6 || Math.abs(got.y - quad[i].y) > 1e-6) homoOk = false;
+  }
+  console.assert(homoOk, 'homography maps unit square onto the quad');
+  const Mi = inv3(M);
+  const back = { x: Mi[0]*quad[2].x + Mi[1]*quad[2].y + Mi[2], y: Mi[3]*quad[2].x + Mi[4]*quad[2].y + Mi[5] };
+  const bw = Mi[6]*quad[2].x + Mi[7]*quad[2].y + Mi[8];
+  console.assert(Math.abs(back.x/bw - 1) < 1e-6 && Math.abs(back.y/bw - 1) < 1e-6, 'inverse homography recovers (1,1)');
+  const ident = homoSqToQuad([{x:0,y:0},{x:100,y:0},{x:100,y:100},{x:0,y:100}]);
+  console.assert(Math.abs(ident[6]) < 1e-9 && Math.abs(ident[7]) < 1e-9, 'axis-aligned quad is affine (g=h=0)');
+
+  // calibration
+  S.cal = { a: { x: 0, y: 0 }, b: { x: 400, y: 0 }, mm: 20 };
+  console.assert(Math.abs(pxPerMm() - 20) < 1e-9, 'px/mm from a calibration line', pxPerMm());
+  console.assert(Math.abs(mmPerPx() - 0.05) < 1e-9, 'mm/px');
+  S.cal = null;
+
+  // layer transform is invertible
+  const L = mkLayer('front');
+  Object.assign(L, { x: 33, y: -12, scale: 1.7, rot: 27, flipH: true });
+  const w0 = layerToWorld(L, { x: 40, y: -25 });
+  const l0 = worldToLayer(L, w0);
+  console.assert(Math.abs(l0.x - 40) < 1e-6 && Math.abs(l0.y + 25) < 1e-6, 'layer transform round-trips');
+
   S.mcu.n = 32; S.mcu.pins = []; ensurePins();
   parsePinCsv('1,PA0,SWCLK\n2,PA1,SWDIO');
   console.assert(S.mcu.pins[0].name === 'PA0' && S.mcu.pins[0].fn === 'SWCLK', 'csv parse');
-  console.assert(S.mcu.pins[31].name === 'P32', 'untouched pins keep default names');
+  console.assert(S.mcu.pins[31].name === 'P32', 'untouched pins keep defaults');
+
   status('selftest done — see console');
   console.log('%cBoardExplorer selftest passed', 'color:#22d3ee');
 }
