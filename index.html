@@ -210,6 +210,7 @@
         <div><span class="kk"><kbd>4</kbd><kbd>5</kbd><kbd>0</kbd></span><span class="kd">Net: SIG · 5V · clear</span></div>
         <div><span class="kk"><kbd>Shift</kbd>+<kbd>V</kbd></span><span class="kd">Mark the selected pad as a via</span></div>
         <div><span class="kk"><kbd>C</kbd></span><span class="kd">Place the selected component kind</span></div>
+        <div><span class="kk"><kbd>[</kbd> <kbd>]</kbd></span><span class="kd">Resize component (<kbd>Shift</kbd> rotates)</span></div>
         <div><span class="kk"><kbd>Del</kbd></span><span class="kd">Delete selected pad / component</span></div>
         <div><span class="kk"><kbd>←↑↓→</kbd></span><span class="kd">Nudge pad (<kbd>Shift</kbd> ×10)</span></div>
       </div>
@@ -271,6 +272,14 @@
     <section>
       <h2>MCU</h2>
       <label class="sl">name<input id="mcuName" placeholder="EFR32FG22C121"></label>
+      <div class="row">
+        <label class="sl" style="flex:1">datasheet
+          <select id="mcuDoc" style="width:100%;font-size:11px" aria-label="MCU datasheet">
+            <option value="">— none —</option>
+          </select>
+        </label>
+        <button id="mcuDocOpen" class="btn small" title="open the linked datasheet">▤</button>
+      </div>
       <div class="row">
         <label class="sl" style="flex:1">package preset
           <select id="mcuPkg" style="width:100%">
@@ -430,6 +439,7 @@ const S = {
     pinLen: 0.05,     // pin length as a fraction of the package size
     style: 'quad',    // quad | dual | module
     pkg: 'QFN-32',
+    docId: null,      // reference into the document library
     targetPitch: 0.5 },
   links: [],
   view: { zoom: 1, tx: 0, ty: 0 },
@@ -1250,6 +1260,8 @@ function paint(g, W, H, dpr, z, tx, ty, guides) {
     g.setTransform(dpr * z, 0, 0, dpr * z, dpr * tx, dpr * ty);
     drawHandles(g);
     if (S.align.active) drawAlignOverlay(g);
+    const sc = selectedComponent();
+    if (sc) drawCompHandles(g, sc);
     g.restore();
   }
   if (guides && S.guides.rulers) drawRulers(g, W, H, view);
@@ -2039,7 +2051,16 @@ $('#mcuN').addEventListener('change', e => {
   $('#mcuN').value = S.mcu.n; ensurePins(); updatePitch(); mcuSync();
   histCommit('pin count');
 });
-$('#mcuName').addEventListener('input', e => { S.mcu.name = e.target.value; saveLocal(); });
+$('#mcuName').addEventListener('input', e => { S.mcu.name = e.target.value; renderMcuDoc(); saveLocal(); });
+$('#mcuDoc').addEventListener('change', e => {
+  S.mcu.docId = e.target.value || null;
+  const btn = $('#mcuDocOpen');
+  if (btn) btn.disabled = !S.mcu.docId;
+  saveLocal(); histCommit('MCU datasheet');
+  const d = S.docs.find(d => d.id === S.mcu.docId);
+  status(d ? 'MCU datasheet → ' + (d.title || d.name) : 'MCU datasheet detached');
+});
+$('#mcuDocOpen').addEventListener('click', () => { if (S.mcu.docId) openDoc(S.mcu.docId); });
 $('#mcuW').addEventListener('input', e => { S.mcu.w = Math.max(2, num(e.target.value, 220)); updatePitch(); render(); saveLocal(); });
 $('#mcuH').addEventListener('input', e => { S.mcu.h = Math.max(2, num(e.target.value, 220)); updatePitch(); render(); saveLocal(); });
 $('#mcuRot').addEventListener('input', e => { S.mcu.rot = num(e.target.value, 0); $('#mcuRotSlider').value = S.mcu.rot; $('#mcuRotV').textContent = Math.round(S.mcu.rot) + '°'; render(); saveLocal(); });
@@ -2301,6 +2322,50 @@ function hitComp(w) {
     if (d < bd) { bd = d; best = c; }
   }
   return best;
+}
+
+// Which manipulation handle of a selected component is under the cursor:
+// 'rot' (above the symbol) or 'size' (bottom-right corner).
+function hitCompHandle(w) {
+  const c = selectedComponent();
+  if (!c) return null;
+  const s = Math.max(8, num(c.size, 46)), half = s / 2;
+  const rot = rad(num(c.rot, 0)), cos = Math.cos(rot), sin = Math.sin(rot);
+  const toWorld = (lx, ly) => ({
+    x: c.x + lx * cos - ly * sin,
+    y: c.y + lx * sin + ly * cos,
+  });
+  const t = 12 / S.view.zoom;
+  const rotH = toWorld(0, -half - 26 / S.view.zoom);
+  if (Math.hypot(w.x - rotH.x, w.y - rotH.y) < t) return 'rot';
+  const sizeH = toWorld(half, half);
+  if (Math.hypot(w.x - sizeH.x, w.y - sizeH.y) < t) return 'size';
+  return null;
+}
+
+// Draw the handles for the selected component, matching the MCU's affordances.
+function drawCompHandles(g, c) {
+  const s = Math.max(8, num(c.size, 46)), half = s / 2;
+  const z = S.view.zoom;
+  const rot = rad(num(c.rot, 0)), cos = Math.cos(rot), sin = Math.sin(rot);
+  const toWorld = (lx, ly) => ({
+    x: c.x + lx * cos - ly * sin,
+    y: c.y + lx * sin + ly * cos,
+  });
+  g.save();
+  g.strokeStyle = '#f59e0b';
+  g.fillStyle = '#0a0e13';
+  g.lineWidth = 1.4 / z;
+
+  const corner = toWorld(half, half);
+  g.beginPath(); g.rect(corner.x - 5 / z, corner.y - 5 / z, 10 / z, 10 / z);
+  g.fill(); g.stroke();
+
+  const top = toWorld(0, -half);
+  const knob = toWorld(0, -half - 26 / z);
+  g.beginPath(); g.moveTo(top.x, top.y); g.lineTo(knob.x, knob.y); g.stroke();
+  g.beginPath(); g.arc(knob.x, knob.y, 5 / z, 0, 7); g.stroke();
+  g.restore();
 }
 function hitPersp(w) {
   if (!S.persist) return null;
@@ -2662,16 +2727,22 @@ cv.addEventListener('pointerdown', e => {
     const pin = hitPin(w);
     if (pin) { addLink(S.selectedPad, pin); return; }
   }
-  const mh = mcuHit(w);
-  if (mh === 'rot' || mh === 'resize') { drag = { type: 'mcu-' + mh }; return; }
-  if (mh === 'move') { drag = { type: 'mcu-move', dx: w.x - S.mcu.x, dy: w.y - S.mcu.y }; return; }
+  // Selected component's handles come first: a component often sits on top of
+  // the package outline, and the MCU's 'move' region would swallow the clicks.
+  const ch = hitCompHandle(w);
+  if (ch) { drag = { type: 'comp-' + ch, id: S.selectedComp, startSize: num(selectedComponent()?.size, 46) }; return; }
 
+  // Then a component body, also before the MCU, for the same overlap reason.
   const comp = hitComp(w);
   if (comp) {
     S.selectedComp = comp.id; S.selectedPad = null;
     drag = { type: 'comp', id: comp.id, dx: w.x - comp.x, dy: w.y - comp.y };
     renderComponents(); renderTables(); render(); return;
   }
+
+  const mh = mcuHit(w);
+  if (mh === 'rot' || mh === 'resize') { drag = { type: 'mcu-' + mh }; return; }
+  if (mh === 'move') { drag = { type: 'mcu-move', dx: w.x - S.mcu.x, dy: w.y - S.mcu.y }; return; }
 
   drag = { type: 'view', sx: e.clientX, sy: e.clientY, ox: S.view.tx, oy: S.view.ty };
   cv.style.cursor = 'grabbing';
@@ -2728,6 +2799,27 @@ cv.addEventListener('pointermove', e => {
     case 'comp': {
       const c = compById(drag.id);
       if (c) { c.x = w.x - drag.dx; c.y = w.y - drag.dy; }
+      break;
+    }
+    case 'comp-rot': {
+      const c = compById(drag.id);
+      if (c) {
+        c.rot = normRot(Math.round(Math.atan2(w.y - c.y, w.x - c.x) * 180 / Math.PI + 90));
+        renderComponents();
+      }
+      break;
+    }
+    case 'comp-size': {
+      const c = compById(drag.id);
+      if (c) {
+        // Distance from the centre to the cursor, doubled, drives the size —
+        // the corner handle tracks the pointer naturally at any rotation.
+        const d = Math.hypot(w.x - c.x, w.y - c.y);
+        c.size = clamp(Math.round(d * 2), 10, 240);
+        renderComponents();
+        const slider = document.querySelector(`#compList input[data-cf="size"][data-comp="${c.id}"]`);
+        if (slider) slider.value = c.size;
+      }
       break;
     }
     case 'pin1':
@@ -2789,6 +2881,7 @@ cv.addEventListener('pointerup', () => {
   if (wasDrag) histCommit({
     pad: 'move pad', layer: 'move layer', pin1: 'move pin 1',
     comp: 'move component',
+    'comp-rot': 'rotate component', 'comp-size': 'resize component',
     'mcu-move': 'move package', 'mcu-rot': 'rotate package', 'mcu-resize': 'resize package',
     persp: 'perspective corner', mask: 'mask', wpt: 'move trace point',
   }[wasDrag] || '');
@@ -2964,7 +3057,7 @@ async function addDocLink() {
     type: '',
     added: new Date().toISOString(),
   });
-  renderDocs(); renderComponents(); saveLocal();
+  renderDocs(); renderComponents(); renderMcuDoc(); saveLocal();
   status('linked ' + title);
   histCommit('add document link');
 }
@@ -3009,6 +3102,7 @@ async function addDocs(files) {
     ? `added ${added}, ${failed} failed`
     : `added ${added} file${added === 1 ? '' : 's'} to the library`);
   if (failed) $('#docHint').textContent = 'Some files could not be stored. Very large PDFs may exceed browser storage.';
+  renderMcuDoc();
 }
 
 async function openDoc(id) {
@@ -3043,17 +3137,36 @@ async function deleteDoc(id) {
   for (const c of S.components) if (c.docId === id) c.docId = null;
   // Links have no bytes in IndexedDB; only delete a blob if we stored one.
   if (!meta || meta.source !== 'url') await docDel(id).catch(() => {});
-  renderDocs(); renderComponents(); render(); saveLocal();
+  renderDocs(); renderComponents(); renderMcuDoc(); render(); saveLocal();
   status('removed ' + (meta?.title || 'document'));
 }
 
+// The document-link button on a library row targets the selected component, or
+// the MCU when nothing is selected — the MCU isn't a component object, so it
+// carries its own docId.
 function linkDocToSelected(docId) {
   const c = selectedComponent();
-  if (!c) { status('select a component first'); return; }
-  c.docId = (c.docId === docId) ? null : docId;
-  renderComponents(); render(); saveLocal(); histCommit('link document');
+  const target = c || S.mcu;
+  const label = c ? compRef(c) : (S.mcu.name || 'MCU');
+  target.docId = (target.docId === docId) ? null : docId;
+  renderComponents(); renderDocs(); renderMcuDoc(); render(); saveLocal();
+  histCommit('link document');
   const d = S.docs.find(d => d.id === docId);
-  status(c.docId ? `${compRef(c)} ↔ ${d?.title || 'document'}` : 'document detached');
+  status(target.docId ? `${label} ↔ ${d?.title || 'document'}` : 'document detached');
+}
+
+// Populate the MCU datasheet selector from the library.
+function renderMcuDoc() {
+  const sel = $('#mcuDoc');
+  if (!sel) return;
+  const cur = S.mcu.docId || '';
+  sel.innerHTML = '<option value="">— none —</option>' + S.docs.map(d =>
+    `<option value="${d.id}">${esc(d.title || d.name)}</option>`).join('');
+  // A doc that was removed from the library can't stay selected.
+  sel.value = S.docs.some(d => d.id === cur) ? cur : '';
+  S.mcu.docId = sel.value || null;
+  const btn = $('#mcuDocOpen');
+  if (btn) btn.disabled = !S.mcu.docId;
 }
 
 function renderComponents() {
@@ -3102,6 +3215,19 @@ function renderComponents() {
           placeholder="1 VBUS&#10;2 D-&#10;3 D+&#10;…or just: VBUS,D-,D+"
           aria-label="pin names for ${esc(compRef(c))}">${esc(pinNamesToText(c))}</textarea>
       </details>` : ''}
+
+      <div class="row" style="margin:5px 0 0;align-items:center">
+        <label class="sl" style="flex:1;margin:0">size
+          <input type="range" data-comp="${c.id}" data-cf="size" min="10" max="240" step="1"
+            value="${Math.round(num(c.size, 46))}" aria-label="component size"></label>
+        <span class="hint" data-cout="size" data-comp="${c.id}" style="margin:0;font-size:10px;min-width:30px;text-align:right">${Math.round(num(c.size, 46))}</span>
+      </div>
+      <div class="row" style="margin:2px 0 0;align-items:center">
+        <label class="sl" style="flex:1;margin:0">rotate
+          <input type="range" data-comp="${c.id}" data-cf="rot" min="-180" max="180" step="1"
+            value="${Math.round(num(c.rot, 0))}" aria-label="component rotation"></label>
+        <span class="hint" data-cout="rot" data-comp="${c.id}" style="margin:0;font-size:10px;min-width:30px;text-align:right">${Math.round(num(c.rot, 0))}°</span>
+      </div>
     </div>`;
   }).join('');
 }
@@ -3114,7 +3240,7 @@ function pinNamesToText(c) {
     .map(n => n + ' ' + c.pinNames[n]).join('\n');
 }
 
-const renderTables = () => { renderPins(); renderPads(); renderLinks(); renderComponents(); renderDocs(); };
+const renderTables = () => { renderPins(); renderPads(); renderLinks(); renderComponents(); renderDocs(); renderMcuDoc(); };
 
 /* library + component listeners */
 $('#docFile').addEventListener('change', async e => {
@@ -3169,9 +3295,20 @@ $('#compList').addEventListener('input', e => {
   if (!el || el.tagName === 'SELECT') return;
   const c = compById(+el.dataset.comp);
   if (!c) return;
-  c[el.dataset.cf] = el.value;
-  if (el.dataset.cf === 'ref') c.ref = String(el.value).trim();
-  render(); saveLocal(); histSoon('component ' + el.dataset.cf);
+  const f = el.dataset.cf;
+  if (f === 'size' || f === 'rot') {
+    // Numeric fields must stay numbers: a string size would break the geometry.
+    const v = num(el.value, num(c[f], f === 'size' ? 46 : 0));
+    c[f] = f === 'size' ? clamp(Math.round(v), 10, 240) : normRot(Math.round(v));
+    // keep the adjacent readout in step while dragging
+    const out = document.querySelector(`[data-cout="${f}"][data-comp="${c.id}"]`);
+    if (out) out.textContent = f === 'size' ? Math.round(c.size) : Math.round(c.rot) + '°';
+    render(); saveLocal(); histSoon('component ' + f);
+    return;
+  }
+  c[f] = el.value;
+  if (f === 'ref') c.ref = String(el.value).trim();
+  render(); saveLocal(); histSoon('component ' + f);
 });
 $('#compList').addEventListener('change', e => {
   const pn = e.target.closest('textarea[data-cpinnames]');
@@ -3374,6 +3511,18 @@ addEventListener('keydown', e => {
       if (e.key === 'ArrowDown') pad.y += step;
       render(); saveLocal(); break;
     }
+    case '[': case ']': {
+      // Resize the selected component (Shift for rotation) without the panel.
+      const c = selectedComponent();
+      if (!c) return;
+      e.preventDefault();
+      const dir = e.key === ']' ? 1 : -1;
+      if (e.shiftKey) c.rot = normRot(c.rot + dir * (e.altKey ? 1 : 15));
+      else c.size = clamp(num(c.size, 46) + dir * (e.altKey ? 1 : 5), 10, 240);
+      renderComponents(); render(); saveLocal(); histSoon('component transform');
+      status(`${compRef(c)} · size ${Math.round(num(c.size, 46))} · ${Math.round(c.rot)}°`);
+      break;
+    }
   }
 });
 
@@ -3422,7 +3571,7 @@ function sessionObject(withImages = true) {
     mirrorBack: S.mirrorBack, layers, pads: S.pads, nextId: S.nextId,
     mcu: { name: S.mcu.name, n: S.mcu.n, x: S.mcu.x, y: S.mcu.y, w: S.mcu.w, h: S.mcu.h,
       rot: S.mcu.rot, corner: S.mcu.corner, pinFill: S.mcu.pinFill, pinLen: S.mcu.pinLen,
-      style: S.mcu.style || 'quad', pkg: S.mcu.pkg || 'custom',
+      style: S.mcu.style || 'quad', pkg: S.mcu.pkg || 'custom', docId: S.mcu.docId || null,
       targetPitch: S.mcu.targetPitch || null, pins: S.mcu.pins },
     links: S.links, traces: S.traces, nextTraceId: S.nextTraceId,
     components: S.components, nextCompId: S.nextCompId,
@@ -3551,7 +3700,8 @@ async function restoreSession(d) {
 
   Object.assign(S.mcu, {
     name: '', n: 32, x: 0, y: 0, w: 220, h: 220, rot: 0, base: 220, pins: [],
-    corner: .08, pinFill: .5, pinLen: .05, style: 'quad', pkg: 'custom', targetPitch: null,
+    corner: .08, pinFill: .5, pinLen: .05, style: 'quad', pkg: 'custom',
+    targetPitch: null, docId: null,
   }, (d.mcu && typeof d.mcu === 'object') ? d.mcu : {});
   S.mcu.n = clamp(fin(S.mcu.n, 32) | 0, 1, 256);
   S.mcu.w = Math.max(2, fin(S.mcu.w, 220));
@@ -3641,6 +3791,8 @@ async function restoreSession(d) {
   for (const c of S.components) {
     if (c.docId && !S.docs.some(x => x.id === c.docId)) c.docId = null;
   }
+  // Same for the MCU's datasheet reference.
+  if (S.mcu.docId && !S.docs.some(x => x.id === S.mcu.docId)) S.mcu.docId = null;
 
   // drop trace associations that point at pads/pins we don't have
   const livePadIds = new Set(S.pads.map(p => p.id));
@@ -3717,7 +3869,7 @@ async function restoreSession(d) {
     fitView();
   }
 
-  refreshUi(); updateCalInfo(); updatePitch(); renderDocs(); renderComponents(); render();
+  refreshUi(); updateCalInfo(); updatePitch(); renderDocs(); renderComponents(); renderMcuDoc(); render();
   reconcileDocs();       // flag metadata whose bytes aren't in this browser
   // A loaded project becomes the current session, so closing the tab right
   // after opening a file doesn't silently fall back to the previous project.
@@ -4281,6 +4433,7 @@ buildLayerEditor();
 renderTables();
 updateCalInfo();
 updatePitch();
+renderMcuDoc();
 render();
 setTool(S.tool);
 histReset();
@@ -4415,6 +4568,7 @@ async function selftest() {
   await selftestToolsTraces();
   await selftestAlign();
   await selftestFpc();
+  await selftestCompTransform();
 
   if (selftestFailures) {
     status(`selftest FAILED — ${selftestFailures} assertion${selftestFailures === 1 ? '' : 's'} (see console)`);
@@ -4748,6 +4902,92 @@ async function selftestAlign() {
 
 const near2 = (a, b, tol = 1e-6) => Math.abs(a - b) < tol;
 
+/* ------------------------------- component transforms + MCU datasheet test */
+async function selftestCompTransform() {
+  const keeper = sessionObject(true);
+
+  const fpc = addComponent({ x: 200, y: 200 }, 'fpc');
+  fpc.pins = '4';
+
+  // size drives the geometry: pin spacing scales with it
+  fpc.size = 40;
+  const small = compPinPositions(fpc);
+  const smallSpan = small[small.length - 1].x - small[0].x;
+  fpc.size = 120;
+  const big = compPinPositions(fpc);
+  const bigSpan = big[big.length - 1].x - big[0].x;
+  check(bigSpan > smallSpan * 2.5, 'size scales the pin span', `${smallSpan.toFixed(1)} → ${bigSpan.toFixed(1)}`);
+
+  // rotation moves pin positions around the centre, keeping the spacing
+  fpc.size = 100; fpc.rot = 0;
+  const flat = compPinPositions(fpc);
+  fpc.rot = 90;
+  const turned = compPinPositions(fpc);
+  const len = pts => Math.hypot(pts[pts.length - 1].x - pts[0].x, pts[pts.length - 1].y - pts[0].y);
+  check(near2(len(flat), len(turned), 1e-6), 'rotation preserves pin spacing',
+    `${len(flat).toFixed(2)} vs ${len(turned).toFixed(2)}`);
+  check(near2(flat[0].y, 200) && near2(turned[0].x, 200), 'rotation swings the row by 90°',
+    JSON.stringify({ flat0: flat[0], turn0: turned[0] }));
+  // every pin stays on the same circle radius after rotation
+  const rad = p => Math.hypot(p.x - 200, p.y - 200);
+  check(flat.every((p, i) => near2(rad(p), rad(turned[i]), 1e-6)), 'each pin keeps its radius');
+
+  // size and rot survive save/load and survive being stored as strings
+  fpc.size = 88; fpc.rot = -45;
+  const snap = sessionObject(false);
+  const savedComp = snap.components.find(c => c.id === fpc.id);
+  check(savedComp.size === 88 && savedComp.rot === -45, 'transform serialised', JSON.stringify(savedComp.size));
+  snap.components.find(c => c.id === fpc.id).size = '132';
+  snap.components.find(c => c.id === fpc.id).rot = 400;
+  await restoreSession(snap);
+  const backComp = compById(fpc.id);
+  check(typeof backComp.size === 'number' && backComp.size === 132, 'string size coerced to a number', backComp.size);
+  check(near2(backComp.rot, 40), 'rotation wrapped on load', backComp.rot);
+
+  // handles sit where the user expects them
+  const c2 = addComponent({ x: 0, y: 0 }, 'resistor');
+  c2.size = 100; c2.rot = 0;
+  S.selectedComp = c2.id;
+  S.view.zoom = 1;
+  const rotHandle = hitCompHandle({ x: 0, y: -50 - 26 });
+  check(rotHandle === 'rot', 'rotate handle hit at the top', rotHandle);
+  const sizeHandle = hitCompHandle({ x: 50, y: 50 });
+  check(sizeHandle === 'size', 'size handle hit at the corner', sizeHandle);
+  check(hitCompHandle({ x: 500, y: 500 }) === null, 'no handle far away');
+
+  // --- MCU datasheet reference ------------------------------------------
+  S.docs = [
+    { id: 'docA', name: 'a.pdf', title: 'Datasheet MCU', kind: 'pdf', size: 1 },
+    { id: 'docB', name: 'b.pdf', title: 'Connector spec', kind: 'pdf', size: 1 },
+  ];
+  S.selectedComp = null;       // nothing selected -> the link targets the MCU
+  linkDocToSelected('docA');
+  check(S.mcu.docId === 'docA', 'library link targets the MCU when no component is selected', S.mcu.docId);
+  linkDocToSelected('docA');
+  check(S.mcu.docId === null, 'linking the same document again detaches it');
+
+  S.mcu.docId = 'docA';
+  const withDoc = sessionObject(false);
+  check(withDoc.mcu.docId === 'docA', 'MCU datasheet serialised');
+  await restoreSession(withDoc);
+  check(S.mcu.docId === 'docA', 'MCU datasheet survives load');
+
+  // a reference to a document that no longer exists is dropped, not left dead
+  const dangling = sessionObject(false);
+  dangling.mcu.docId = 'docGone';
+  await restoreSession(dangling);
+  check(S.mcu.docId === null, 'dangling MCU datasheet reference cleared');
+
+  // selecting a component redirects the library link to that component
+  const comp3 = addComponent({ x: 0, y: 0 }, 'resistor');
+  S.selectedComp = comp3.id;
+  linkDocToSelected('docB');
+  check(comp3.docId === 'docB' && S.mcu.docId !== 'docB', 'with a component selected the link targets it',
+    JSON.stringify({ comp: comp3.docId, mcu: S.mcu.docId }));
+
+  histReset();
+  await restoreSession(keeper);
+}
 /* ------------------------------------------------------ FPC / pinout test */
 async function selftestFpc() {
   const keeper = sessionObject(true);
