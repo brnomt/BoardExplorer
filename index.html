@@ -459,6 +459,7 @@ const S = {
   components: [], nextCompId: 1, selectedComp: null,
   docs: [],               // metadata only; bytes live in IndexedDB
   traces: [], nextTraceId: 1, activeTrace: null, hoverTrace: null,
+  traceGrowEnd: 'end',     // which end the next trace click extends
   selectedTracePoint: null,   // { trace, i } — the waypoint a click last picked
   mcu: { name: '', n: 32, x: 0, y: 0, w: 220, h: 220, rot: 0, base: 220, pins: [],
     corner: 0.08,     // fraction of each edge left empty at the corners
@@ -1041,6 +1042,16 @@ function drawTraces(g) {
         g.strokeStyle = picked ? t.color : '#0a0e13';
         g.lineWidth = 1.4 / z; g.stroke();
       }
+      // While this trace is being extended, ring the end the next click will
+      // grow from — the nearest end, which may be either one.
+      if (isActive && t.pts.length > 1 && (i === 0 || i === t.pts.length - 1)) {
+        const growFrom = i === 0 ? 'start' : 'end';
+        if (S.traceGrowEnd === growFrom) {
+          g.beginPath(); g.arc(p.x, p.y, r * 2.6, 0, 7);
+          g.strokeStyle = '#a3e635'; g.lineWidth = 1.4 / z;
+          g.setLineDash([3 / z, 2 / z]); g.stroke(); g.setLineDash([]);
+        }
+      }
     });
 
     // Endpoint pads/pins touched by the copper, drawn as small squares so a
@@ -1254,6 +1265,25 @@ function drawPinLinks(g) {
     g.beginPath(); g.moveTo(a.x, a.y); g.quadraticCurveTo(cx, cy, b.x, b.y); g.stroke();
   }
   g.setLineDash([]);
+  g.restore();
+}
+
+function drawPins(g) {
+  // Pins belonging to the hovered/active trace are highlighted so moving over a
+  // trace answers "which pins does this reach?" without opening the panel.
+  const t = traceById(S.hoverTrace != null ? S.hoverTrace : S.activeTrace);
+  if (!t || !(t.pins || []).length) return;
+  const z = S.view.zoom;
+  g.save();
+  for (const n of t.pins) {
+    const p = pinLayout(S.mcu).find(q => q.n === n);
+    if (!p) continue;
+    const q = xf(S.mcu, p);
+    // Generous ring so it reads at any zoom, drawn behind the pin label.
+    g.beginPath(); g.arc(q.x, q.y, 14 / z, 0, 7);
+    g.fillStyle = 'rgba(34,211,238,0.30)'; g.fill();
+    g.strokeStyle = '#22d3ee'; g.lineWidth = 2.2 / z; g.stroke();
+  }
   g.restore();
 }
 
@@ -1510,6 +1540,7 @@ function paint(g, W, H, dpr, z, tx, ty, guides) {
   drawLinks(g);
   drawMcu(g);
   drawPinLinks(g);
+  drawPins(g);
   drawComponents(g);
   drawPads(g);
   if (guides && S.guides.pin1 && S.pin1.on) drawPin1(g);
@@ -2607,6 +2638,21 @@ function ensureTraceShape(t) {
   return t;
 }
 
+// Add a waypoint by continuing from the NEAREST end of the trace, not always
+// from the last one. Appending unconditionally meant that after finishing at
+// one end, any further click drew a straight line all the way across the board
+// to reach the other end — the trace grew from the wrong place.
+function appendTracePoint(t, pt) {
+  ensureTraceShape(t);
+  if (!t.pts.length) { t.pts.push({ x: pt.x, y: pt.y }); return; }
+  if (t.pts.length === 1) { t.pts.push({ x: pt.x, y: pt.y }); return; }
+  const first = t.pts[0], last = t.pts[t.pts.length - 1];
+  const dFirst = Math.hypot(pt.x - first.x, pt.y - first.y);
+  const dLast = Math.hypot(pt.x - last.x, pt.y - last.y);
+  if (dFirst < dLast) t.pts.unshift({ x: pt.x, y: pt.y });
+  else t.pts.push({ x: pt.x, y: pt.y });
+}
+
 function insertTracePoint(traceId, seg, w) {
   const t = traceById(traceId);
   if (!t || seg == null) return;
@@ -3128,7 +3174,11 @@ cv.addEventListener('pointerdown', e => {
       if (pw) pt = { x: pw.x, y: pw.y };
       if (!t.pins.includes(pinHit)) t.pins.push(pinHit);
     }
-    t.pts.push(pt);
+    if (t.pts.length > 1) {
+      const f = t.pts[0], l = t.pts[t.pts.length - 1];
+      S.traceGrowEnd = Math.hypot(w.x - f.x, w.y - f.y) < Math.hypot(w.x - l.x, w.y - l.y) ? 'start' : 'end';
+    }
+    appendTracePoint(t, pt);
     buildStack(); buildLayerEditor(); render(); saveLocal(); histSoon('add trace point');
     if (padHit) status(`trace ${t.id} touches pad #${padHit.id}${padNet(padHit) ? ' (' + padNet(padHit) + ')' : ''}`);
     else if (pinHit != null) status(`trace ${t.id} touches pin ${pinHit}`);
@@ -5127,6 +5177,7 @@ async function selftest() {
   await selftestCompTransform();
   await selftestPinLinks();
   await selftestMultiTraceLinks();
+  await selftestTraceExtend();
 
   if (selftestFailures) {
     status(`selftest FAILED — ${selftestFailures} assertion${selftestFailures === 1 ? '' : 's'} (see console)`);
@@ -5540,6 +5591,45 @@ async function selftestAlign() {
 }
 
 const near2 = (a, b, tol = 1e-6) => Math.abs(a - b) < tol;
+
+/* ------------------------------------------- extending a trace from either end */
+async function selftestTraceExtend() {
+  const keeper = sessionObject(true);
+
+  const t = { id: 4001, name: 'grow', color: '#22d3ee', side: 'front', visible: true,
+    width: 3, pts: [{ x: 0, y: 0 }], pads: [], pins: [] };
+
+  appendTracePoint(t, { x: 100, y: 0 });
+  check(t.pts.length === 2, 'second point appended', t.pts.length);
+
+  // Nearer the last point -> append at the end.
+  appendTracePoint(t, { x: 200, y: 0 });
+  check(t.pts.length === 3 && near2(t.pts[2].x, 200), 'click near the end appends there',
+    JSON.stringify(t.pts.map(p => p.x)));
+
+  // Nearer the first point -> prepend, instead of a line drawn across the trace.
+  appendTracePoint(t, { x: -90, y: 0 });
+  check(t.pts.length === 4, 'prepend keeps all points', t.pts.length);
+  check(near2(t.pts[0].x, -90), 'click near the start prepends to the start',
+    JSON.stringify(t.pts.map(p => p.x)));
+  check(near2(t.pts[t.pts.length - 1].x, 200), 'the far end is untouched');
+
+  const maxSeg = Math.max(...t.pts.slice(1).map((p, i) =>
+    Math.hypot(p.x - t.pts[i].x, p.y - t.pts[i].y)));
+  check(maxSeg < 200, 'no long bridging segment was created', maxSeg.toFixed(1));
+
+  appendTracePoint(t, { x: -180, y: 0 });
+  check(near2(t.pts[0].x, -180), 'a second prepend still goes to the front',
+    JSON.stringify(t.pts.map(p => p.x)));
+  check(t.pts.length === 5, 'all points retained after two prepends', t.pts.length);
+
+  const empty = { pts: [] };
+  appendTracePoint(empty, { x: 5, y: 5 });
+  check(empty.pts.length === 1 && near2(empty.pts[0].x, 5), 'empty trace accepts a point');
+
+  histReset();
+  await restoreSession(keeper);
+}
 
 /* ------------------------------ many associations on one trace test */
 async function selftestMultiTraceLinks() {
