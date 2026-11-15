@@ -85,6 +85,20 @@
     <p class="hint">PCB pad → MCU pin mapper</p>
 
     <section>
+      <h2>Project</h2>
+      <input id="projName" placeholder="project name" style="width:100%;margin-bottom:6px" aria-label="project name">
+      <div class="row">
+        <button id="saveJSON">Save project</button>
+        <label class="btn">Open project<input type="file" id="loadJSON" accept=".json,application/json"></label>
+      </div>
+      <div class="row">
+        <button id="savePNG">Export PNG</button>
+        <button id="saveCSV">Export CSV</button>
+      </div>
+      <p class="hint" id="status">—</p>
+    </section>
+
+    <section>
       <h2>Layers</h2>
       <div id="layerCards"></div>
       <label class="mini-chk" style="margin-top:2px">
@@ -110,20 +124,6 @@
         <button id="zoom1">1:1</button>
         <span class="hint" id="zoomLbl">100%</span>
       </div>
-    </section>
-
-    <section>
-      <h2>Session</h2>
-      <input id="projName" placeholder="project name" style="width:100%;margin-bottom:6px" aria-label="project name">
-      <div class="row">
-        <button id="saveJSON">Save project</button>
-        <label class="btn">Open project<input type="file" id="loadJSON" accept=".json,application/json"></label>
-      </div>
-      <div class="row">
-        <button id="savePNG">Export PNG</button>
-        <button id="saveCSV">Export CSV</button>
-      </div>
-      <p class="hint" id="status">—</p>
     </section>
 
     <section>
