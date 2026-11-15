@@ -188,6 +188,7 @@
         <label class="mini-chk"><input type="checkbox" id="gRulers" checked> rulers</label>
         <label class="mini-chk"><input type="checkbox" id="gPin1" checked> pin 1</label>
         <label class="mini-chk"><input type="checkbox" id="gOutline" checked> mcu</label>
+        <label class="mini-chk"><input type="checkbox" id="gLinks" checked> links</label>
         <label class="mini-chk"><input type="checkbox" id="gLoupe"> loupe <kbd>M</kbd></label>
       </div>
     </section>
@@ -445,7 +446,7 @@ const S = {
   view: { zoom: 1, tx: 0, ty: 0 },
   tool: 'pan',
   pin1: { x: -150, y: -150, on: true },
-  guides: { grid: true, cross: true, rulers: true, pin1: true, outline: true },
+  guides: { grid: true, cross: true, rulers: true, pin1: true, outline: true, links: true },
   loupe: { on: false, factor: 4 },
   peek: { id: null, wasVisible: true },   // layer temporarily hidden by a held key
   cursor: null,           // {sx,sy,x,y} last pointer over canvas
@@ -986,16 +987,38 @@ function drawPads(g) {
 }
 
 function drawLinks(g) {
+  if (S.guides.links === false) return;
   const z = S.view.zoom;
   g.save();
-  g.lineWidth = 1.6 / z; g.setLineDash([5 / z, 4 / z]);
+  g.lineWidth = 1.4 / z; g.setLineDash([5 / z, 4 / z]);
   for (const l of S.links) {
     const pad = S.pads.find(p => p.id === l.pad), pw = pinWorld(l.pin);
     if (!pad || !pw) continue;
+    // If a trace already runs from this pad to this pin, that trace IS the
+    // evidence — the straight dashed hypothesis is redundant and just clutters
+    // the photo with a line that doesn't follow the copper.
+    if (traceEvidencesLink(l.pad, l.pin, pw)) continue;
     g.strokeStyle = pad.color;
+    g.globalAlpha = 0.55;
     g.beginPath(); g.moveTo(pad.x, pad.y); g.lineTo(pw.x, pw.y); g.stroke();
   }
+  g.globalAlpha = 1;
   g.restore();
+}
+
+// True when some visible trace connects this pad to this pin: either it
+// recorded the association (snapped waypoints) or one of its ends lands on the
+// pin, which is what you get when you finish the trace just short of it.
+function traceEvidencesLink(padId, pin, pinWorldPt) {
+  const tol = 14 / S.view.zoom;
+  for (const t of S.traces) {
+    if (!t.visible) continue;
+    if (!(t.pads || []).includes(padId)) continue;
+    if ((t.pins || []).includes(pin)) return true;
+    const ends = [t.pts[0], t.pts[t.pts.length - 1]].filter(Boolean);
+    if (ends.some(pt => Math.hypot(pt.x - pinWorldPt.x, pt.y - pinWorldPt.y) <= tol)) return true;
+  }
+  return false;
 }
 
 function drawComponents(g) {
@@ -1969,7 +1992,7 @@ $('#padSide').addEventListener('change', e => S.padSide = e.target.value);
 $('#mirrorBack').addEventListener('change', e => { S.mirrorBack = e.target.checked; buildStack(); render(); saveLocal(); });
 const bindGuide = (sel, key) => $(sel).addEventListener('change', e => { S.guides[key] = e.target.checked; render(); saveLocal(); });
 bindGuide('#gGrid', 'grid'); bindGuide('#gCross', 'cross'); bindGuide('#gRulers', 'rulers');
-bindGuide('#gPin1', 'pin1'); bindGuide('#gOutline', 'outline');
+bindGuide('#gPin1', 'pin1'); bindGuide('#gOutline', 'outline'); bindGuide('#gLinks', 'links');
 $('#gLoupe').addEventListener('change', e => setLoupe(e.target.checked));
 $('#btnLoupe').addEventListener('click', () => setLoupe(!S.loupe.on));
 $('#btnUndo').addEventListener('click', () => undo());
@@ -2263,6 +2286,28 @@ function splitTrace(traceId, index) {
   buildStack(); buildLayerEditor(); render(); saveLocal();
   histCommit('split trace');
   status(`split into trace ${t.id} + ${tail.id}`);
+}
+
+// Re-derive which pads/pins a trace touches from its endpoints. Used after an
+// endpoint is dragged so the association follows the geometry.
+function rebindTraceEnds(t) {
+  if (!t) return;
+  ensureTraceShape(t);
+  if (!t.pts.length) return;
+  const tol = 14 / S.view.zoom;
+  const ends = [t.pts[0], t.pts[t.pts.length - 1]];
+  for (const pt of ends) {
+    const pad = S.pads.find(p => Math.hypot(p.x - pt.x, p.y - pt.y) <= tol);
+    if (pad && !t.pads.includes(pad.id)) t.pads.push(pad.id);
+    if (!pad) {
+      const pin = pinLayout(S.mcu).find(p => {
+        const q = xf(S.mcu, p);
+        return Math.hypot(q.x - pt.x, q.y - pt.y) <= tol;
+      });
+      if (pin && !t.pins.includes(pin.n)) t.pins.push(pin.n);
+    }
+  }
+  buildLayerEditor();
 }
 
 function deleteTracePoint(traceId, index) {
@@ -2612,6 +2657,26 @@ cv.addEventListener('pointerdown', e => {
     }
   }
 
+  // Vector-editor convention, checked before any tool branch so it works with
+  // the Trace tool active too: Alt+click a dot removes it, Alt+click a segment
+  // inserts a point.
+  if (e.altKey) {
+    const wpHit = hitWaypoint(w);
+    if (wpHit) {
+      S.activeTrace = wpHit.trace.id;
+      deleteTracePoint(wpHit.trace.id, wpHit.i);
+      buildStack(); buildLayerEditor(); render();
+      return;
+    }
+    const segAlt = hitTraceSegment(w);
+    if (segAlt) {
+      S.activeTrace = segAlt.trace.id;
+      insertTracePoint(segAlt.trace.id, segAlt.seg, { x: segAlt.x, y: segAlt.y });
+      buildStack(); buildLayerEditor(); render();
+      return;
+    }
+  }
+
   // perspective corner drag wins over everything else
   const pi = hitPersp(w);
   if (pi != null && S.persist) {
@@ -2874,6 +2939,10 @@ cv.addEventListener('pointermove', e => {
 
 cv.addEventListener('pointerup', () => {
   const wasDrag = drag && drag.type;
+  // Dragging a trace endpoint onto a pad or MCU pin should record the
+  // association, exactly like clicking there does. Without this, the trace
+  // visually reaches the pin but the link still draws its straight dashed line.
+  if (wasDrag === 'wpt' && drag.trace) rebindTraceEnds(drag.trace);
   drag = null;
   cv.style.cursor = S.tool === 'pan' ? 'grab' : (S.tool === 'pad' || S.tool === 'via') ? 'crosshair' : 'cell';
   saveLocal();
@@ -3814,7 +3883,7 @@ async function restoreSession(d) {
     x: fin(d.pin1?.x, -150), y: fin(d.pin1?.y, -150), on: d.pin1?.on !== false,
   };
   Object.assign(S.guides, {
-    grid: true, cross: true, rulers: true, pin1: true, outline: true,
+    grid: true, cross: true, rulers: true, pin1: true, outline: true, links: true,
   }, (d.guides && typeof d.guides === 'object') ? d.guides : {});
 
   // transient editor state never survives a load
@@ -3886,6 +3955,7 @@ function refreshUi() {
   $('#gGrid').checked = S.guides.grid; $('#gCross').checked = S.guides.cross;
   $('#gRulers').checked = S.guides.rulers; $('#gPin1').checked = S.guides.pin1;
   $('#gOutline').checked = S.guides.outline;
+  $('#gLinks').checked = S.guides.links !== false;
   $('#gLoupe').checked = !!S.loupe.on;
   $('#btnLoupe').classList.toggle('on', !!S.loupe.on);
   $('#loupeHint').classList.toggle('on', !!S.loupe.on);
@@ -4774,6 +4844,59 @@ async function selftestToolsTraces() {
     check(S.nextTraceId > Math.max(...ids), 'nextTraceId stays above every loaded id', S.nextTraceId);
   }
 
+  // --- drawn links vs. traced evidence ----------------------------------
+  // A dashed link is a hypothesis. Once a trace proves the same pad→pin
+  // connection, the straight line should stop being drawn.
+  S.mcu.n = 32; S.mcu.pins = []; ensurePins();
+  S.mcu.x = 0; S.mcu.y = 0; S.mcu.w = 200; S.mcu.h = 200; S.mcu.rot = 0;
+  S.view.zoom = 1;
+  const lp = addPad({ x: 300, y: 300 }, {});
+  S.links = S.links.filter(l => l.pad !== lp.id);
+  addLink(lp.id, 1);
+  const pinPt = pinWorld(1);
+  check(!!pinPt, 'pin 1 has a world position');
+
+  let tEv = { id: S.nextTraceId++, name: 'ev', color: '#22d3ee', side: 'front', visible: true, width: 3,
+    pts: [{ x: lp.x, y: lp.y }, { x: pinPt.x, y: pinPt.y }], pads: [lp.id], pins: [1] };
+  S.traces.push(tEv);
+  check(traceEvidencesLink(lp.id, 1, pinPt) === true, 'trace with the association evidences the link');
+
+  // a trace that merely ENDS on the pin (no recorded snap) also counts
+  tEv.pins = [];
+  check(traceEvidencesLink(lp.id, 1, pinPt) === true, 'trace ending on the pin evidences the link');
+
+  // but a trace that touches neither end does not
+  tEv.pads = [];
+  tEv.pts = [{ x: 0, y: 0 }, { x: 10, y: 10 }];
+  check(traceEvidencesLink(lp.id, 1, pinPt) === false, 'unrelated trace does not suppress the link');
+
+  // a hidden trace must not suppress it either
+  S.traces = S.traces.filter(t => t.id !== tEv.id);
+  const tHidden = { ...tEv, id: S.nextTraceId++, visible: false, pads: [lp.id], pins: [1],
+    pts: [{ x: lp.x, y: lp.y }, { x: pinPt.x, y: pinPt.y }] };
+  S.traces.push(tHidden);
+  check(traceEvidencesLink(lp.id, 1, pinPt) === false, 'hidden trace does not hide the link');
+
+  // --- dragging an endpoint onto a pin records the association -----------
+  const tDrag = { id: S.nextTraceId++, name: 'drag', color: '#a3e635', side: 'front',
+    visible: true, width: 3, pts: [{ x: 500, y: 500 }, { x: 500, y: 620 }], pads: [], pins: [] };
+  S.traces.push(tDrag);
+  tDrag.pts[1] = { x: pinPt.x + 1, y: pinPt.y + 1 };   // dropped onto the pin
+  rebindTraceEnds(tDrag);
+  check(tDrag.pins.includes(1), 'endpoint dragged onto a pin records the pin', JSON.stringify(tDrag.pins));
+
+  // and onto a pad, including its id
+  tDrag.pts[1] = { x: lp.x + 2, y: lp.y - 2 };
+  rebindTraceEnds(tDrag);
+  check(tDrag.pads.includes(lp.id), 'endpoint dragged onto a pad records the pad', JSON.stringify(tDrag.pads));
+  check(new Set(tDrag.pads).size === tDrag.pads.length, 'rebind does not duplicate pads');
+
+  S.traces = S.traces.filter(t => ![tEv.id, tHidden.id, tDrag.id].includes(t.id));
+  S.links = S.links.filter(l => l.pad !== lp.id);
+  S.pads = S.pads.filter(p => p.id !== lp.id);
+
+  // --- the trace → pad/pin association (in selftestToolsTraces) covers
+  // snap-on-click; here the link suppression and endpoint rebinding are tested.
   histReset();
   S.activeTrace = null; S.measure = null; S.tool = 'pan';
   await restoreSession(keeper);
