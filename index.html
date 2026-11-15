@@ -81,6 +81,12 @@
   .empty{color:var(--muted);font-size:12px;padding:8px;text-align:center}
   kbd{background:#1b232e;border:1px solid var(--line);border-radius:3px;padding:0 4px;font-size:12px}
   .cal{font-variant-numeric:tabular-nums}
+  .net-pill{display:inline-block;font-size:10px;font-weight:600;letter-spacing:.3px;
+    border-radius:3px;padding:0 5px;line-height:16px;vertical-align:middle}
+  #loupeHint{position:absolute;right:12px;bottom:12px;font-size:11px;color:var(--muted);
+    background:#11161de6;border:1px solid var(--line);border-radius:6px;padding:4px 8px;
+    pointer-events:none;display:none;backdrop-filter:blur(6px)}
+  #loupeHint.on{display:block}
 </style>
 </head>
 <body>
@@ -126,15 +132,17 @@
         <label class="mini-chk"><input type="checkbox" id="gRulers" checked> rulers</label>
         <label class="mini-chk"><input type="checkbox" id="gPin1" checked> pin 1</label>
         <label class="mini-chk"><input type="checkbox" id="gOutline" checked> mcu</label>
+        <label class="mini-chk"><input type="checkbox" id="gLoupe"> loupe <kbd>M</kbd></label>
       </div>
     </section>
 
     <section>
       <h2>Keys</h2>
       <p class="hint">
-        <kbd>Z</kbd> zoom · <kbd>R</kbd>/<kbd>Shift</kbd>+<kbd>R</kbd> rotate layer ±1°<br>
-        <kbd>←↑↓→</kbd> nudge (<kbd>Shift</kbd> ×10) · <kbd>Del</kbd> delete · <kbd>F</kbd> fit<br>
-        <kbd>Esc</kbd> deselect · <kbd>Enter</kbd> end trace · <kbd>Alt</kbd>+drag = move layer
+        <kbd>Z</kbd> zoom · <kbd>M</kbd> loupe · <kbd>V</kbd> toggle via<br>
+        <kbd>1</kbd> GND · <kbd>2</kbd> VCC · <kbd>3</kbd> 3V3 · <kbd>4</kbd> SIG · <kbd>5</kbd> 5V · <kbd>0</kbd> clear net<br>
+        <kbd>R</kbd>/<kbd>Shift</kbd>+<kbd>R</kbd> rotate layer ±1° · <kbd>←↑↓→</kbd> nudge · <kbd>Del</kbd> delete<br>
+        <kbd>F</kbd> fit · <kbd>Esc</kbd> deselect · <kbd>Enter</kbd> end trace · <kbd>Alt</kbd>+drag = move layer
       </p>
     </section>
   </aside>
@@ -144,6 +152,7 @@
     <div id="toolbar">
       <button data-tool="pan" class="on" title="pan / move">✋</button>
       <button data-tool="pad" title="add pad">⊕ pad</button>
+      <button data-tool="via" title="add through-via (projects on both sides)">◎ via</button>
       <button data-tool="trace" title="draw copper trace">⌇ trace</button>
       <button data-tool="measure" title="measure / calibrate">↔ ruler</button>
       <button data-tool="mask" title="drag a mask window">▢ mask</button>
@@ -151,9 +160,11 @@
       <label>side
         <select id="padSide"><option value="front">front</option><option value="back">back</option></select>
       </label>
+      <button id="btnLoupe" title="precision loupe (M)" type="button">🔍</button>
       <span class="sep"></span>
       <span class="hint" id="coords">–</span>
     </div>
+    <div id="loupeHint">loupe ×4 — <kbd>M</kbd> to dismiss</div>
   </main>
 
   <aside id="right" class="panel">
@@ -161,12 +172,16 @@
       <h2>MCU</h2>
       <label class="sl">name<input id="mcuName" placeholder="EFR32FG22C121"></label>
       <div class="row">
-        <label class="sl" style="flex:1">package
+        <label class="sl" style="flex:1">package preset
           <select id="mcuPkg" style="width:100%">
-            <option value="QFN32">QFN32</option>
-            <option value="QFN40">QFN40</option>
-            <option value="QFN48">QFN48</option>
-            <option value="QFN64">QFN64</option>
+            <option value="QFN-32">QFN-32 · 0.5 mm</option>
+            <option value="QFN-48">QFN-48 · 0.5 mm</option>
+            <option value="QFN40">QFN-40 · 0.5 mm</option>
+            <option value="QFN64">QFN-64 · 0.5 mm</option>
+            <option value="SOIC-8">SOIC-8 · 1.27 mm</option>
+            <option value="SOT-23-6">SOT-23-6 · 0.95 mm</option>
+            <option value="ESP32-C3">ESP32-C3 module</option>
+            <option value="ESP-12">ESP-12 module</option>
             <option value="custom">custom</option>
           </select>
         </label>
@@ -257,22 +272,59 @@ const S = {
   layers: { front: mkLayer('front'), back: mkLayer('back'), close: mkLayer('close') },
   active: 'front',
   mirrorBack: true,
-  pads: [], nextId: 1, selectedPad: null, padSide: 'front',
+  pads: [], nextId: 1, selectedPad: null, padSide: 'front', hoverPad: null,
   traces: [], nextTraceId: 1, activeTrace: null,
   mcu: { name: '', n: 32, x: 0, y: 0, w: 220, h: 220, rot: 0, base: 220, pins: [],
     corner: 0.08,     // fraction of each edge left empty at the corners
     pinFill: 0.5,     // pin width as a fraction of the pitch
-    pinLen: 0.05 },   // pin length as a fraction of the package size
+    pinLen: 0.05,     // pin length as a fraction of the package size
+    style: 'quad',    // quad | dual | module
+    pkg: 'QFN-32',
+    targetPitch: 0.5 },
   links: [],
   view: { zoom: 1, tx: 0, ty: 0 },
   tool: 'pan',
   pin1: { x: -150, y: -150, on: true },
   guides: { grid: true, cross: true, rulers: true, pin1: true, outline: true },
+  loupe: { on: false, factor: 4 },
+  cursor: null,           // {sx,sy,x,y} last pointer over canvas
   persist: null,          // {a,b} corners while editing a perspective
   maskEdit: null,         // {layer, ax, ay} while dragging a mask
   measure: null,          // {a,b} in progress or last measurement
   cal: null,              // {a,b,mm}
   useMm: false,
+};
+
+/* ---------------------------------------------------------- nets / presets */
+const NET_DEFS = {
+  GND:  { id: 'GND',  color: '#3b82f6', label: 'GND' },
+  VCC:  { id: 'VCC',  color: '#ef4444', label: 'VCC' },
+  '3V3': { id: '3V3', color: '#f87171', label: '3V3' },
+  '5V':  { id: '5V',  color: '#dc2626', label: '5V' },
+  SIG:  { id: 'SIG',  color: '#a3e635', label: 'SIG' },
+};
+const NET_KEYS = { '1': 'GND', '2': 'VCC', '3': '3V3', '4': 'SIG', '5': '5V' };
+
+// Body sizes are in mm when calibrated; otherwise used as relative px placeholders.
+const PKG_PRESETS = {
+  'QFN-32':    { n: 32, style: 'quad',   pitchMm: 0.5,  bodyMm: [5, 5],     corner: 0.10, pinFill: 0.45, pinLen: 0.06 },
+  'QFN-48':    { n: 48, style: 'quad',   pitchMm: 0.5,  bodyMm: [7, 7],     corner: 0.08, pinFill: 0.45, pinLen: 0.055 },
+  'QFN40':     { n: 40, style: 'quad',   pitchMm: 0.5,  bodyMm: [6, 6],     corner: 0.09, pinFill: 0.45, pinLen: 0.055 },
+  'QFN64':     { n: 64, style: 'quad',   pitchMm: 0.5,  bodyMm: [9, 9],     corner: 0.07, pinFill: 0.42, pinLen: 0.05 },
+  'SOIC-8':    { n: 8,  style: 'dual',   pitchMm: 1.27, bodyMm: [3.9, 4.9], corner: 0.06, pinFill: 0.40, pinLen: 0.12 },
+  'SOT-23-6':  { n: 6,  style: 'dual',   pitchMm: 0.95, bodyMm: [1.6, 2.9], corner: 0.08, pinFill: 0.40, pinLen: 0.14 },
+  'ESP32-C3':  { n: 16, style: 'module', pitchMm: 1.27, bodyMm: [13, 16.6], corner: 0.04, pinFill: 0.35, pinLen: 0.08 },
+  'ESP-12':    { n: 16, style: 'module', pitchMm: 2.0,  bodyMm: [16, 24],   corner: 0.03, pinFill: 0.30, pinLen: 0.07 },
+};
+
+const isVia = p => !!(p && (p.via || p.side === 'via'));
+const padNet = p => (p && p.net) ? String(p.net) : '';
+const activeNet = () => {
+  const sel = S.pads.find(p => p.id === S.selectedPad);
+  if (sel && padNet(sel)) return padNet(sel);
+  const hov = S.pads.find(p => p.id === S.hoverPad);
+  if (hov && padNet(hov)) return padNet(hov);
+  return '';
 };
 
 /* ----------------------------------------------------------------- canvas */
@@ -395,11 +447,25 @@ function warped(L) {
 /* --------------------------------------------------------------- pin model */
 // Pins go CCW from pin 1 (top of the left edge). `corner` trims both ends of
 // every edge, for packages whose pads stop short of the corners.
+// style: 'quad' (4 sides), 'dual'/'module' (left+right only), else ring fallback.
 function pinLayout(m) {
   const N = m.n | 0, out = [];
   if (N <= 0) return out;
   const { w, h } = m;
   const c = clamp(num(m.corner, .08), 0, .45);
+  const style = m.style || 'quad';
+
+  if (style === 'dual' || style === 'module') {
+    const leftN = Math.ceil(N / 2), rightN = N - leftN;
+    const spanY = h * (1 - 2 * c);
+    const pitchL = spanY / Math.max(leftN, 1), pitchR = spanY / Math.max(rightN, 1);
+    for (let i = 0; i < leftN; i++)
+      out.push({ n: i + 1, x: -w / 2, y: -h / 2 + h * c + (i + .5) * pitchL, side: 'left', pitch: pitchL, axis: 'y' });
+    for (let i = 0; i < rightN; i++)
+      out.push({ n: leftN + i + 1, x: w / 2, y: h / 2 - h * c - (i + .5) * pitchR, side: 'right', pitch: pitchR, axis: 'y' });
+    return out;
+  }
+
   if (N % 4 === 0) {
     const per = N / 4;
     const spanY = h * (1 - 2 * c), spanX = w * (1 - 2 * c);
@@ -643,24 +709,46 @@ function drawMcu(g) {
 
 function drawPads(g) {
   const z = S.view.zoom, r = 11 / z;
+  const netHi = activeNet();
   g.save();
   for (const p of S.pads) {
     const sel = S.selectedPad === p.id;
+    const via = isVia(p);
+    const sameNet = netHi && padNet(p) === netHi;
+    if (sameNet) {
+      g.beginPath(); g.arc(p.x, p.y, r * 1.55, 0, 7);
+      g.fillStyle = (NET_DEFS[netHi]?.color || p.color) + '28';
+      g.fill();
+      g.lineWidth = 1.2 / z;
+      g.strokeStyle = (NET_DEFS[netHi]?.color || p.color) + 'aa';
+      g.stroke();
+    }
     g.beginPath(); g.arc(p.x, p.y, r, 0, 7);
-    g.fillStyle = p.color + '40'; g.fill();
-    if (p.side === 'back') g.setLineDash([3 / z, 3 / z]);
-    g.lineWidth = (sel ? 3 : 1.6) / z;
+    g.fillStyle = p.color + (via ? '28' : '40'); g.fill();
+    if (!via && p.side === 'back') g.setLineDash([3 / z, 3 / z]);
+    g.lineWidth = (sel ? 3 : via ? 2 : 1.6) / z;
     g.strokeStyle = sel ? '#ffffff' : p.color;
     g.stroke();
     g.setLineDash([]);
+    if (via) {
+      // Through-via: inner barrel + F↔B tick — same world point on both faces.
+      g.beginPath(); g.arc(p.x, p.y, r * 0.42, 0, 7);
+      g.strokeStyle = p.color; g.lineWidth = 1.4 / z; g.stroke();
+      g.beginPath();
+      g.moveTo(p.x, p.y - r * 0.85); g.lineTo(p.x, p.y + r * 0.85);
+      g.moveTo(p.x - r * 0.22, p.y - r * 0.55); g.lineTo(p.x + r * 0.22, p.y - r * 0.55);
+      g.moveTo(p.x - r * 0.22, p.y + r * 0.55); g.lineTo(p.x + r * 0.22, p.y + r * 0.55);
+      g.strokeStyle = '#22d3ee'; g.lineWidth = 1.2 / z; g.stroke();
+    }
     g.fillStyle = p.color;
     g.font = `${clamp(12 / z, 7, 30)}px ui-monospace,monospace`;
     g.textAlign = 'center'; g.textBaseline = 'middle';
     g.fillText(String(p.id), p.x, p.y + .5 / z);
-    if (p.label) {
-      g.fillStyle = '#e6edf5';
+    const tag = p.label || (via ? 'via' : '') || padNet(p);
+    if (tag) {
+      g.fillStyle = padNet(p) && NET_DEFS[padNet(p)] ? NET_DEFS[padNet(p)].color : '#e6edf5';
       g.font = `${clamp(11 / z, 7, 28)}px ui-sans-serif,system-ui`;
-      g.fillText(p.label, p.x, p.y + r + 9 / z);
+      g.fillText(tag, p.x, p.y + r + 9 / z);
     }
   }
   g.restore();
@@ -816,7 +904,77 @@ function render() {
     cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
   }
   paint(ctx, W, H, dpr, S.view.zoom, S.view.tx, S.view.ty, true);
+  if (S.loupe.on) drawLoupe(ctx, W, H, dpr);
   $('#zoomLbl').textContent = Math.round(S.view.zoom * 100) + '%';
+}
+
+/* -------------------------------------------------------- precision loupe */
+function setLoupe(on) {
+  S.loupe.on = !!on;
+  const btn = $('#btnLoupe'), hint = $('#loupeHint'), chk = $('#gLoupe');
+  if (btn) btn.classList.toggle('on', S.loupe.on);
+  if (hint) hint.classList.toggle('on', S.loupe.on);
+  if (chk) chk.checked = S.loupe.on;
+  render();
+}
+
+function drawLoupe(g, W, H, dpr) {
+  if (!S.cursor) return;
+  const factor = clamp(num(S.loupe.factor, 4), 3, 5);
+  const size = 148;
+  const sx = S.cursor.sx, sy = S.cursor.sy;
+  const wx = S.cursor.x, wy = S.cursor.y;
+  let lx = sx + 28, ly = sy + 28;
+  if (lx + size > W - 8) lx = sx - size - 28;
+  if (ly + size > H - 8) ly = sy - size - 28;
+  lx = clamp(lx, 8, Math.max(8, W - size - 8));
+  ly = clamp(ly, 8, Math.max(8, H - size - 8));
+
+  const z = S.view.zoom * factor;
+  const tx = size / 2 - wx * z;
+  const ty = size / 2 - wy * z;
+
+  if (!S._loupeCv) S._loupeCv = document.createElement('canvas');
+  const lc = S._loupeCv;
+  const pw = Math.max(1, Math.round(size * dpr)), ph = Math.max(1, Math.round(size * dpr));
+  if (lc.width !== pw || lc.height !== ph) { lc.width = pw; lc.height = ph; }
+  const lg = lc.getContext('2d');
+  // Recompose visible layers (blend + opacity) + pads at optical zoom, no chrome.
+  // Temporarily match S.view.zoom so stroke widths / hit radii track the loupe scale.
+  const prevZ = S.view.zoom;
+  S.view.zoom = z;
+  paint(lg, size, size, dpr, z, tx, ty, false);
+  S.view.zoom = prevZ;
+
+  g.save();
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.beginPath();
+  const radR = 10;
+  g.moveTo(lx + radR, ly);
+  g.arcTo(lx + size, ly, lx + size, ly + size, radR);
+  g.arcTo(lx + size, ly + size, lx, ly + size, radR);
+  g.arcTo(lx, ly + size, lx, ly, radR);
+  g.arcTo(lx, ly, lx + size, ly, radR);
+  g.closePath();
+  g.save();
+  g.clip();
+  g.drawImage(lc, lx, ly, size, size);
+  g.restore();
+  g.strokeStyle = '#22d3ee';
+  g.lineWidth = 1.6;
+  g.stroke();
+  const mx = lx + size / 2, my = ly + size / 2;
+  g.strokeStyle = '#22d3eeaa';
+  g.lineWidth = 1;
+  g.beginPath();
+  g.moveTo(mx - 10, my); g.lineTo(mx + 10, my);
+  g.moveTo(mx, my - 10); g.lineTo(mx, my + 10);
+  g.stroke();
+  g.fillStyle = '#8b97a8';
+  g.font = '10px ui-monospace,monospace';
+  g.textAlign = 'right'; g.textBaseline = 'bottom';
+  g.fillText('×' + factor, lx + size - 6, ly + size - 4);
+  g.restore();
 }
 
 /* --------------------------------------------------------------- geometry */
@@ -1150,7 +1308,7 @@ document.querySelectorAll('#toolbar [data-tool]').forEach(b => {
   b.addEventListener('click', () => {
     S.tool = b.dataset.tool;
     document.querySelectorAll('#toolbar [data-tool]').forEach(x => x.classList.toggle('on', x === b));
-    cv.style.cursor = S.tool === 'pan' ? 'grab' : S.tool === 'pad' ? 'crosshair' : 'cell';
+    cv.style.cursor = S.tool === 'pan' ? 'grab' : (S.tool === 'pad' || S.tool === 'via') ? 'crosshair' : 'cell';
     render();
   });
 });
@@ -1159,6 +1317,8 @@ $('#mirrorBack').addEventListener('change', e => { S.mirrorBack = e.target.check
 const bindGuide = (sel, key) => $(sel).addEventListener('change', e => { S.guides[key] = e.target.checked; render(); saveLocal(); });
 bindGuide('#gGrid', 'grid'); bindGuide('#gCross', 'cross'); bindGuide('#gRulers', 'rulers');
 bindGuide('#gPin1', 'pin1'); bindGuide('#gOutline', 'outline');
+$('#gLoupe').addEventListener('change', e => setLoupe(e.target.checked));
+$('#btnLoupe').addEventListener('click', () => setLoupe(!S.loupe.on));
 $('#fit').addEventListener('click', fitView);
 $('#zoom1').addEventListener('click', () => {
   const W = cv.clientWidth / 2, H = cv.clientHeight / 2;
@@ -1187,12 +1347,51 @@ $('#addTrace').addEventListener('click', () => {
 
 /* --------------------------------------------------------------- MCU inputs */
 const mcuSync = () => { renderTables(); render(); saveLocal(); };
+
+function applyPkgPreset(id) {
+  const P = PKG_PRESETS[id];
+  if (!P) { S.mcu.pkg = 'custom'; return; }
+  S.mcu.pkg = id;
+  S.mcu.n = P.n;
+  S.mcu.style = P.style;
+  S.mcu.corner = P.corner;
+  S.mcu.pinFill = P.pinFill;
+  S.mcu.pinLen = P.pinLen;
+  S.mcu.targetPitch = P.pitchMm;
+  const ppm = pxPerMm();
+  if (ppm > 0 && P.bodyMm) {
+    S.mcu.w = P.bodyMm[0] * ppm;
+    S.mcu.h = P.bodyMm[1] * ppm;
+  } else if (P.bodyMm) {
+    // Uncalibrated: keep a workable on-screen size with the right aspect ratio.
+    const aspect = P.bodyMm[1] / P.bodyMm[0];
+    S.mcu.w = 220;
+    S.mcu.h = Math.max(40, Math.round(220 * aspect));
+  }
+  ensurePins();
+  $('#mcuN').value = S.mcu.n;
+  $('#mcuW').value = Math.round(S.mcu.w);
+  $('#mcuH').value = Math.round(S.mcu.h);
+  $('#mcuCorner').value = S.mcu.corner;
+  $('#mcuFill').value = S.mcu.pinFill;
+  $('#mcuPinLen').value = S.mcu.pinLen;
+  $('#mcuCornerV').textContent = Math.round(S.mcu.corner * 100) + '%';
+  $('#mcuFillV').textContent = Math.round(S.mcu.pinFill * 100) + '%';
+  $('#mcuPinLenV').textContent = (S.mcu.pinLen * 100).toFixed(1) + '%';
+  updatePitch();
+  status(`preset ${id} — drag/scale the outline onto the chip`);
+}
+
 $('#mcuPkg').addEventListener('change', e => {
   const v = e.target.value;
-  if (v !== 'custom') { S.mcu.n = +v.replace(/\D/g, ''); $('#mcuN').value = S.mcu.n; ensurePins(); mcuSync(); }
+  if (v === 'custom') { S.mcu.pkg = 'custom'; saveLocal(); return; }
+  applyPkgPreset(v);
+  mcuSync();
 });
 $('#mcuN').addEventListener('change', e => {
   S.mcu.n = clamp(num(e.target.value, 32) | 0, 1, 256);
+  S.mcu.pkg = 'custom';
+  $('#mcuPkg').value = 'custom';
   $('#mcuN').value = S.mcu.n; ensurePins(); updatePitch(); mcuSync();
 });
 $('#mcuName').addEventListener('input', e => { S.mcu.name = e.target.value; saveLocal(); });
@@ -1221,10 +1420,15 @@ function updatePitch() {
   const layout = pinLayout(S.mcu);
   if (!layout.length) { $('#mcuPitch').textContent = 'pitch —'; return; }
   const p = layout[0].pitch;
-  const per = S.mcu.n / 4;
+  const style = S.mcu.style || 'quad';
+  const per = (style === 'dual' || style === 'module')
+    ? Math.ceil(S.mcu.n / 2)
+    : (S.mcu.n % 4 === 0 ? S.mcu.n / 4 : S.mcu.n);
   const mm = mmPerPx() > 0 ? (p * mmPerPx()).toFixed(3) + ' mm' : '';
+  const tgt = S.mcu.targetPitch ? ` · target ${S.mcu.targetPitch} mm` : '';
+  const edge = (style === 'dual' || style === 'module') ? 'side' : 'edge';
   $('#mcuPitch').textContent =
-    `pitch ${p.toFixed(1)} px${mm ? ' = ' + mm : ''} · ${per | 0} pins/edge`;
+    `pitch ${p.toFixed(1)} px${mm ? ' = ' + mm : ''}${tgt} · ${per | 0} pins/${edge}`;
 }
 
 // uniform scale: keeps the center, multiplies both sides
@@ -1353,9 +1557,18 @@ function mcuHit(w) {
 }
 
 const PALETTE = ['#22d3ee', '#f472b6', '#a3e635', '#fbbf24', '#818cf8', '#fb7185'];
-function addPad(w) {
-  const p = { id: S.nextId++, side: S.padSide, label: '', notes: '',
-    color: PALETTE[S.pads.length % PALETTE.length], x: w.x, y: w.y };
+function addPad(w, opts = {}) {
+  const via = !!opts.via;
+  const p = {
+    id: S.nextId++,
+    side: via ? 'via' : S.padSide,
+    via,
+    net: '',
+    label: via ? 'via' : '',
+    notes: '',
+    color: via ? '#22d3ee' : PALETTE[S.pads.length % PALETTE.length],
+    x: w.x, y: w.y,
+  };
   S.pads.push(p); S.selectedPad = p.id;
   renderTables(); render(); saveLocal();
   return p;
@@ -1364,6 +1577,33 @@ function deletePad(id) {
   S.pads = S.pads.filter(p => p.id !== id);
   S.links = S.links.filter(l => l.pad !== id);
   if (S.selectedPad === id) S.selectedPad = null;
+  if (S.hoverPad === id) S.hoverPad = null;
+  renderTables(); render(); saveLocal();
+}
+function toggleVia(pad) {
+  if (!pad) return;
+  pad.via = !isVia(pad);
+  if (pad.via) {
+    pad.side = 'via';
+    if (!pad.label) pad.label = 'via';
+    if (pad.color === PALETTE[(pad.id - 1) % PALETTE.length] || !pad.color) pad.color = '#22d3ee';
+  } else if (pad.side === 'via') {
+    pad.side = S.padSide || 'front';
+    if (pad.label === 'via') pad.label = '';
+  }
+  renderTables(); render(); saveLocal();
+}
+function setPadNet(pad, netId) {
+  if (!pad) return;
+  if (!netId) {
+    pad.net = '';
+  } else {
+    const def = NET_DEFS[netId];
+    if (!def) return;
+    pad.net = def.id;
+    pad.color = def.color;
+    if (!pad.label || NET_DEFS[pad.label] || pad.label === 'via') pad.label = def.label;
+  }
   renderTables(); render(); saveLocal();
 }
 
@@ -1420,8 +1660,9 @@ cv.addEventListener('pointerdown', e => {
     return;
   }
 
-  if (S.tool === 'pad' && !hitPad(w)) {
-    const p = addPad(w); drag = { type: 'pad', id: p.id, dx: 0, dy: 0 }; return;
+  if ((S.tool === 'pad' || S.tool === 'via') && !hitPad(w)) {
+    const p = addPad(w, { via: S.tool === 'via' });
+    drag = { type: 'pad', id: p.id, dx: 0, dy: 0 }; return;
   }
   const pad = hitPad(w);
   if (pad) {
@@ -1446,10 +1687,21 @@ cv.addEventListener('pointerdown', e => {
 
 cv.addEventListener('pointermove', e => {
   const w = toWorld(e);
+  const rect = cv.getBoundingClientRect();
+  S.cursor = { sx: e.clientX - rect.left, sy: e.clientY - rect.top, x: w.x, y: w.y };
   $('#coords').textContent = S.useMm && pxPerMm() > 0
     ? `${(w.x * mmPerPx()).toFixed(2)}, ${(w.y * mmPerPx()).toFixed(2)} mm`
     : `${Math.round(w.x)}, ${Math.round(w.y)} px`;
-  if (!drag) return;
+
+  if (!drag) {
+    const hp = hitPad(w);
+    const nid = hp ? hp.id : null;
+    if (nid !== S.hoverPad || S.loupe.on) {
+      S.hoverPad = nid;
+      render();
+    }
+    return;
+  }
 
   switch (drag.type) {
     case 'view':
@@ -1514,8 +1766,15 @@ cv.addEventListener('pointermove', e => {
   render();
 });
 
-cv.addEventListener('pointerup', () => { drag = null; cv.style.cursor = S.tool === 'pan' ? 'grab' : S.tool === 'pad' ? 'crosshair' : 'cell'; saveLocal(); });
+cv.addEventListener('pointerup', () => {
+  drag = null;
+  cv.style.cursor = S.tool === 'pan' ? 'grab' : (S.tool === 'pad' || S.tool === 'via') ? 'crosshair' : 'cell';
+  saveLocal();
+});
 cv.addEventListener('pointercancel', () => { drag = null; });
+cv.addEventListener('pointerleave', () => {
+  if (S.hoverPad != null || S.loupe.on) { S.hoverPad = null; if (!S.loupe.on) render(); }
+});
 
 cv.addEventListener('dblclick', e => {
   if (S.tool === 'trace') { S.activeTrace = null; buildStack(); render(); return; }
@@ -1575,34 +1834,42 @@ function renderPins() {
 
 function renderPads() {
   const host = $('#padList');
-  if (!S.pads.length) { host.innerHTML = '<div class="empty">No pads yet — press <b>⊕ pad</b> and click the photo.</div>'; return; }
+  if (!S.pads.length) { host.innerHTML = '<div class="empty">No pads yet — press <b>⊕ pad</b> / <b>◎ via</b> and click the photo.</div>'; return; }
+  const netOpts = `<option value="">net</option>` + Object.keys(NET_DEFS).map(k => `<option value="${k}">${k}</option>`).join('');
   host.innerHTML = S.pads.map(p => `
     <div class="padrow${S.selectedPad === p.id ? ' sel' : ''}" data-pad="${p.id}">
       <span class="pill">#${p.id}</span>
-      <input class="mini" data-pad="${p.id}" data-f="label" value="${esc(p.label)}" placeholder="label" style="flex:1 1 40%" aria-label="pad ${p.id} label">
-      <input class="mini" data-pad="${p.id}" data-f="notes" value="${esc(p.notes)}" placeholder="note" style="flex:1 1 34%" aria-label="pad ${p.id} notes">
+      <input class="mini" data-pad="${p.id}" data-f="label" value="${esc(p.label)}" placeholder="label" style="flex:1 1 28%" aria-label="pad ${p.id} label">
+      <select data-pad="${p.id}" data-f="net" style="font-size:11px;max-width:58px" aria-label="pad ${p.id} net">${netOpts}</select>
       <select data-pad="${p.id}" data-f="side" style="font-size:12px" aria-label="pad ${p.id} side">
-        <option value="front">F</option><option value="back">B</option>
+        <option value="front">F</option><option value="back">B</option><option value="via">via</option>
       </select>
       <input type="color" data-pad="${p.id}" data-f="color" value="${p.color}" aria-label="pad ${p.id} color">
       <button class="del" data-del="${p.id}" title="delete pad ${p.id}">✕</button>
     </div>`).join('');
   for (const p of S.pads) {
-    const sel = host.querySelector(`select[data-pad="${p.id}"]`);
-    if (sel) sel.value = p.side;
+    const side = host.querySelector(`select[data-pad="${p.id}"][data-f="side"]`);
+    if (side) side.value = isVia(p) ? 'via' : p.side;
+    const net = host.querySelector(`select[data-pad="${p.id}"][data-f="net"]`);
+    if (net) net.value = padNet(p) || '';
   }
 }
 
 const NOTES = ['unknown', 'GND', 'VDD', 'SWDIO', 'SWCLK', 'nRESET', 'VCC', 'other'];
 
 function renderLinks() {
-  let html = '<thead><tr><th>pad</th><th>side</th><th>label</th><th>pin</th><th>pin name</th><th>continuity</th><th></th></tr></thead><tbody>';
-  if (!S.pads.length) html += '<tr><td colspan="7" class="empty">no pads</td></tr>';
+  let html = '<thead><tr><th>pad</th><th>side</th><th>net</th><th>label</th><th>pin</th><th>pin name</th><th>continuity</th><th></th></tr></thead><tbody>';
+  if (!S.pads.length) html += '<tr><td colspan="8" class="empty">no pads</td></tr>';
   for (const p of S.pads) {
     const l = linkOf(p.id), pin = l ? S.mcu.pins[l.pin - 1] : null;
+    const net = padNet(p);
+    const netCell = net
+      ? `<span class="net-pill" style="background:${(NET_DEFS[net]?.color || p.color)}33;color:${NET_DEFS[net]?.color || p.color}">${esc(net)}</span>`
+      : '—';
     html += `<tr${S.selectedPad === p.id ? ' class="sel"' : ''} data-rowpad="${p.id}">
-      <td style="color:${p.color}">#${p.id}</td>
-      <td>${p.side}</td>
+      <td style="color:${p.color}">#${p.id}${isVia(p) ? ' ◎' : ''}</td>
+      <td>${isVia(p) ? 'via' : p.side}</td>
+      <td>${netCell}</td>
       <td>${esc(p.label || '')}</td>
       <td>${l ? l.pin : '—'}</td>
       <td>${pin ? esc(pin.name) + (pin.fn ? ' <span style="color:#8b97a8">' + esc(pin.fn) + '</span>' : '') : '—'}</td>
@@ -1636,12 +1903,25 @@ $('#padList').addEventListener('click', e => {
 $('#padList').addEventListener('input', e => {
   const el = e.target.closest('[data-pad]'); if (!el || !el.dataset.f) return;
   const p = S.pads.find(p => p.id === +el.dataset.pad); if (!p) return;
+  if (el.dataset.f === 'net' || el.dataset.f === 'side') return;
   p[el.dataset.f] = el.value; render(); saveLocal();
 });
 $('#padList').addEventListener('change', e => {
-  const el = e.target.closest('select[data-f=side]'); if (!el) return;
-  const p = S.pads.find(p => p.id === +el.dataset.pad);
-  if (p) { p.side = el.value; render(); saveLocal(); }
+  const side = e.target.closest('select[data-f=side]');
+  if (side) {
+    const p = S.pads.find(p => p.id === +side.dataset.pad);
+    if (p) {
+      if (side.value === 'via') { p.via = true; p.side = 'via'; }
+      else { p.via = false; p.side = side.value; }
+      renderTables(); render(); saveLocal();
+    }
+    return;
+  }
+  const net = e.target.closest('select[data-f=net]');
+  if (net) {
+    const p = S.pads.find(p => p.id === +net.dataset.pad);
+    if (p) setPadNet(p, net.value);
+  }
 });
 $('#linkTable').addEventListener('change', e => {
   const sel = e.target.closest('[data-note]'); if (!sel) return;
@@ -1662,6 +1942,20 @@ addEventListener('keydown', e => {
   if (/^(input|textarea|select)$/i.test(e.target.tagName)) return;
   const pad = S.pads.find(p => p.id === S.selectedPad);
   const step = e.shiftKey ? 10 : 1;
+  if (NET_KEYS[e.key]) {
+    if (!pad) { status('select a pad first'); return; }
+    e.preventDefault();
+    setPadNet(pad, NET_KEYS[e.key]);
+    status(`pad #${pad.id} → ${NET_KEYS[e.key]}`);
+    return;
+  }
+  if (e.key === '0') {
+    if (!pad) return;
+    e.preventDefault();
+    setPadNet(pad, '');
+    status(`pad #${pad.id} net cleared`);
+    return;
+  }
   switch (e.key) {
     case 'z': case 'Z': {
       if (S.view.zoom > 1.4) { fitView(); break; }
@@ -1671,6 +1965,16 @@ addEventListener('keydown', e => {
       S.view.tx = W - cw.x * S.view.zoom; S.view.ty = H - cw.y * S.view.zoom;
       render(); break;
     }
+    case 'm': case 'M':
+      e.preventDefault();
+      setLoupe(!S.loupe.on);
+      break;
+    case 'v': case 'V':
+      if (!pad) { status('select a pad first'); break; }
+      e.preventDefault();
+      toggleVia(pad);
+      status(isVia(pad) ? `pad #${pad.id} marked as via (F↔B)` : `pad #${pad.id} via cleared`);
+      break;
     case 'r': case 'R': {
       if (!S.active) break;
       const L = S.layers[S.active];
@@ -1681,6 +1985,7 @@ addEventListener('keydown', e => {
     case 'Enter': S.activeTrace = null; buildStack(); buildLayerEditor(); render(); break;
     case 'Escape':
       S.selectedPad = null; S.persist = null; S.activeTrace = null;
+      if (S.loupe.on) setLoupe(false);
       buildStack(); buildLayerEditor(); renderTables(); render(); break;
     case 'Delete': case 'Backspace':
       if (pad) { e.preventDefault(); deletePad(pad.id); } break;
@@ -1718,11 +2023,12 @@ function sessionObject(withImages = true) {
       bright: L.bright, contrast: L.contrast, quad: L.quad, mask: L.mask };
   }
   return {
-    app: 'BoardExplorer', version: 2, savedAt: new Date().toISOString(), project: S.project,
+    app: 'BoardExplorer', version: 3, savedAt: new Date().toISOString(), project: S.project,
     mirrorBack: S.mirrorBack, layers, pads: S.pads, nextId: S.nextId,
     mcu: { name: S.mcu.name, n: S.mcu.n, x: S.mcu.x, y: S.mcu.y, w: S.mcu.w, h: S.mcu.h,
       rot: S.mcu.rot, corner: S.mcu.corner, pinFill: S.mcu.pinFill, pinLen: S.mcu.pinLen,
-      pins: S.mcu.pins },
+      style: S.mcu.style || 'quad', pkg: S.mcu.pkg || 'custom',
+      targetPitch: S.mcu.targetPitch || null, pins: S.mcu.pins },
     links: S.links, traces: S.traces, nextTraceId: S.nextTraceId,
     cal: S.cal, useMm: S.useMm,
     view: S.view, pin1: S.pin1, guides: S.guides,
@@ -1733,10 +2039,18 @@ async function restoreSession(d) {
   if (!d || d.app !== 'BoardExplorer') throw new Error('not a BoardExplorer project');
   S.project = d.project || (d.layers?.front?.name || 'untitled').replace(/\.[^.]+$/, '') || 'untitled';
   S.mirrorBack = d.mirrorBack !== false;
-  S.pads = d.pads || [];
+  S.pads = (d.pads || []).map(p => ({
+    ...p,
+    via: !!(p.via || p.side === 'via'),
+    net: p.net || '',
+  }));
   S.nextId = d.nextId || (Math.max(0, ...S.pads.map(p => p.id)) + 1);
-  S.links = d.links || []; S.selectedPad = null;
-  Object.assign(S.mcu, { corner: .08, pinFill: .5, pinLen: .05 }, d.mcu || {}); ensurePins();
+  S.links = d.links || []; S.selectedPad = null; S.hoverPad = null;
+  Object.assign(S.mcu, {
+    corner: .08, pinFill: .5, pinLen: .05, style: 'quad', pkg: 'custom', targetPitch: null,
+  }, d.mcu || {});
+  if (!S.mcu.style) S.mcu.style = 'quad';
+  ensurePins();
   S.traces = d.traces || [];
   S.nextTraceId = d.nextTraceId || (Math.max(0, ...S.traces.map(t => t.id)) + 1);
   S.activeTrace = null;
@@ -1769,6 +2083,9 @@ function refreshUi() {
   $('#gGrid').checked = S.guides.grid; $('#gCross').checked = S.guides.cross;
   $('#gRulers').checked = S.guides.rulers; $('#gPin1').checked = S.guides.pin1;
   $('#gOutline').checked = S.guides.outline;
+  $('#gLoupe').checked = !!S.loupe.on;
+  $('#btnLoupe').classList.toggle('on', !!S.loupe.on);
+  $('#loupeHint').classList.toggle('on', !!S.loupe.on);
   $('#mcuName').value = S.mcu.name; $('#mcuN').value = S.mcu.n;
   $('#mcuW').value = Math.round(S.mcu.w); $('#mcuH').value = Math.round(S.mcu.h);
   $('#mcuRot').value = S.mcu.rot;
@@ -1780,6 +2097,12 @@ function refreshUi() {
   $('#mcuCornerV').textContent = Math.round(S.mcu.corner * 100) + '%';
   $('#mcuFillV').textContent = Math.round(S.mcu.pinFill * 100) + '%';
   $('#mcuPinLenV').textContent = (S.mcu.pinLen * 100).toFixed(1) + '%';
+  {
+    const pkg = S.mcu.pkg || 'custom';
+    const sel = $('#mcuPkg');
+    sel.value = (PKG_PRESETS[pkg] || pkg === 'custom') ? pkg : 'custom';
+    if (![...sel.options].some(o => o.value === sel.value)) sel.value = 'custom';
+  }
   buildStack(); buildLayerEditor();
   renderTables();
 }
@@ -1810,10 +2133,21 @@ $('#savePNG').addEventListener('click', () => {
 });
 $('#saveCSV').addEventListener('click', () => {
   const q = s => '"' + String(s ?? '').replace(/"/g, '""') + '"';
-  const rows = [['pad', 'side', 'label', 'notes', 'mcu_pin', 'mcu_name', 'mcu_function', 'continuity']];
+  const rows = [['pad', 'side', 'via', 'net', 'label', 'notes', 'mcu_pin', 'mcu_name', 'mcu_function', 'continuity']];
   for (const p of S.pads) {
     const l = linkOf(p.id), pin = l ? S.mcu.pins[l.pin - 1] : null;
-    rows.push([p.id, p.side, p.label, p.notes, l ? l.pin : '', pin ? pin.name : '', pin ? pin.fn : '', l ? l.note : '']);
+    rows.push([
+      p.id,
+      isVia(p) ? 'via' : p.side,
+      isVia(p) ? '1' : '0',
+      padNet(p),
+      p.label,
+      p.notes,
+      l ? l.pin : '',
+      pin ? pin.name : '',
+      pin ? pin.fn : '',
+      l ? l.note : '',
+    ]);
   }
   download(projSlug() + '-pads.csv', rows.map(r => r.map(q).join(',')).join('\n'), 'text/csv');
 });
@@ -1927,6 +2261,32 @@ function selftest() {
   parsePinCsv('1,PA0,SWCLK\n2,PA1,SWDIO');
   console.assert(S.mcu.pins[0].name === 'PA0' && S.mcu.pins[0].fn === 'SWCLK', 'csv parse');
   console.assert(S.mcu.pins[31].name === 'P32', 'untouched pins keep defaults');
+
+  // dual / module pin layouts (SOIC, SOT, ESP modules)
+  const soic = pinLayout({ n: 8, w: 100, h: 120, corner: 0.06, style: 'dual' });
+  console.assert(soic.length === 8, 'SOIC-8 pin count');
+  console.assert(soic.every(q => q.side === 'left' || q.side === 'right'), 'dual pins only on L/R');
+  console.assert(soic[0].side === 'left' && soic[0].y < soic[3].y, 'SOIC pin1 top-left, descending');
+  console.assert(soic[4].side === 'right' && soic[4].y > soic[7].y, 'SOIC continues CCW on right');
+  const sot = pinLayout({ n: 6, w: 60, h: 100, corner: 0.08, style: 'dual' });
+  console.assert(sot.length === 6 && sot[0].pitch > 0, 'SOT-23-6 dual layout');
+
+  // via + net fields round-trip through session payload without breaking v2 projects
+  const oldPad = { id: 1, side: 'front', label: 'TP1', notes: '', color: '#22d3ee', x: 0, y: 0 };
+  const viaPad = { id: 2, side: 'via', via: true, net: 'GND', label: 'via', notes: '', color: '#3b82f6', x: 10, y: 10 };
+  console.assert(!isVia(oldPad) && isVia(viaPad), 'via detection');
+  console.assert(padNet(viaPad) === 'GND' && padNet(oldPad) === '', 'net helpers');
+  const snap = sessionObject(false);
+  console.assert(snap.version >= 2 && Array.isArray(snap.pads), 'session still exports pads array');
+  console.assert('style' in snap.mcu && 'pkg' in snap.mcu, 'mcu preset fields in JSON');
+
+  // package preset applies geometry without throwing
+  const prev = { n: S.mcu.n, w: S.mcu.w, h: S.mcu.h, style: S.mcu.style };
+  applyPkgPreset('SOIC-8');
+  console.assert(S.mcu.n === 8 && S.mcu.style === 'dual' && S.mcu.targetPitch === 1.27, 'SOIC-8 preset');
+  applyPkgPreset('QFN-32');
+  console.assert(S.mcu.n === 32 && S.mcu.style === 'quad' && S.mcu.targetPitch === 0.5, 'QFN-32 preset');
+  Object.assign(S.mcu, prev); ensurePins();
 
   status('selftest done — see console');
   console.log('%cBoardExplorer selftest passed', 'color:#22d3ee');
