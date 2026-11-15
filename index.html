@@ -1104,22 +1104,36 @@ async function decodeImageFile(file) {
 
 async function loadFile(file, layerId) {
   const out = await decodeImageFile(file);
-  await setLayerSrc(layerId, out.src, file.name);
+  // A photo dropped onto an empty layer starts centred; dropping a replacement
+  // onto a layer that already has one keeps the framing you dialled in.
+  const resetTransform = !S.layers[layerId].img;
+  await setLayerSrc(layerId, out.src, file.name, { resetTransform });
   if (out.note) status(`${file.name}: ${out.note}`);
 }
 
-function setLayerSrc(layerId, src, name) {
+// opts.resetTransform: true only when the user drops a brand-new photo onto an
+// empty layer. On restore/project-load it must be false — otherwise the onload
+// callback wipes the rotation/scale/pan/homography we just read from the file.
+// opts.fit: reframe the viewport (skip on restore, the saved view wins).
+// opts.save: schedule an autosave (skip on restore to avoid persisting a
+// half-applied state).
+function setLayerSrc(layerId, src, name, opts = {}) {
+  const { resetTransform = false, fit = true, save = true, visible = true } = opts;
   return new Promise((res, rej) => {
     const img = new Image();
     img.onload = () => {
-      const L = S.layers[layerId], first = !L.img;
-      L.img = img; L.src = src; L.name = name || L.name; L.visible = true;
+      const L = S.layers[layerId];
+      L.img = img; L.src = src; L.name = name || L.name;
       L._sd = null; L._warp = null;
-      if (first) {
+      if (resetTransform) {
+        L.visible = visible;
         L.x = 0; L.y = 0; L.scale = 1; L.rot = 0; L.flipH = false; L.flipV = false;
         L.opacity = layerId === 'close' ? 1 : .8;
       }
-      buildStack(); buildLayerEditor(); fitView(); saveLocal(); res();
+      buildStack(); buildLayerEditor();
+      if (fit) fitView(); else render();
+      if (save) saveLocal();
+      res(L);
     };
     img.onerror = () => rej(new Error('image decode failed'));
     img.src = src;
@@ -1243,21 +1257,35 @@ function buildTraceEditor(host) {
   host.querySelector('select[data-t=side]').value = t.side;
 }
 
-$('#layerEditor').addEventListener('input', e => {
+// Checkboxes and <select> report through `change`, ranges through `input`.
+// Both paths must write the same fields, or flip/blend silently never save.
+const LAYER_CHECKBOXES = new Set(['flipH', 'flipV']);
+
+function commitLayerField(el) {
+  const k = el && el.dataset && el.dataset.k;
   const L = S.layers[S.active];
-  if (e.target.dataset.k && L) {
-    const k = e.target.dataset.k;
-    if (k === 'flipH' || k === 'flipV') L[k] = e.target.checked;
-    else if (k === 'blend') L.blend = e.target.value;
-    else {
-      L[k] = num(e.target.value, L[k]);
-      if (k === 'scale' || k === 'rot') L._warp = L._warp;   // geometry comes from the transform
-    }
-    const out = $('#v-' + k);
-    if (out) out.textContent = k === 'scale' ? L.scale.toFixed(2)
-      : k === 'rot' ? L.rot.toFixed(1) + '°' : Math.round(L[k] * 100) + '%';
-    render(); saveLocal(); return;
+  if (!k || !L) return false;
+  if (LAYER_CHECKBOXES.has(k)) L[k] = !!el.checked;
+  else if (k === 'blend') L.blend = BLEND_OPS.has(el.value) ? el.value : 'source-over';
+  else if (k === 'visible') L.visible = !!el.checked;
+  else {
+    const v = num(el.value, L[k]);
+    // scale must never reach 0 — drawLayerBody would collapse the layer
+    L[k] = k === 'scale' ? clamp(v, 0.01, 64) : k === 'rot' ? normRot(v) : v;
   }
+  const out = $('#v-' + k);
+  if (out) {
+    out.textContent = k === 'scale' ? L.scale.toFixed(2)
+      : k === 'rot' ? L.rot.toFixed(1) + '°'
+      : Math.round(fin(L[k], 0) * 100) + '%';
+  }
+  render(); saveLocal();
+  return true;
+}
+
+$('#layerEditor').addEventListener('input', e => {
+  if (commitLayerField(e.target)) return;
+  const L = S.layers[S.active];
   const mk = e.target.dataset.mask;
   if (mk && L) {
     if (mk === 'on' || mk === 'invert') L.mask[mk] = e.target.checked;
@@ -1281,6 +1309,15 @@ $('#layerEditor').addEventListener('change', e => {
     const f = e.target.files[0];
     if (f) loadFile(f, S.active).catch(err => status('load failed: ' + err.message));
     return;
+  }
+  if (commitLayerField(e.target)) return;
+  const L = S.layers[S.active];
+  const mk = e.target.dataset.mask;
+  if (mk && L) {
+    if (mk === 'on' || mk === 'invert') L.mask[mk] = !!e.target.checked;
+    else if (mk === 'kind') L.mask.kind = e.target.value === 'rect' ? 'rect' : 'ellipse';
+    else L.mask[mk] = num(e.target.value, L.mask[mk]);
+    render(); saveLocal(); return;
   }
   if (e.target.dataset.t === 'side') { render(); saveLocal(); }
 });
@@ -2018,12 +2055,29 @@ function projSlug() {
 function sessionObject(withImages = true) {
   const layers = {};
   for (const [id, L] of Object.entries(S.layers)) {
-    layers[id] = { name: L.name, src: withImages ? L.src : null, x: L.x, y: L.y, scale: L.scale,
-      rot: L.rot, flipH: L.flipH, flipV: L.flipV, opacity: L.opacity, blend: L.blend, visible: L.visible,
-      bright: L.bright, contrast: L.contrast, quad: L.quad, mask: L.mask };
+    layers[id] = {
+      name: L.name, src: withImages ? L.src : null,
+      // flat geometry (v1/v2/v3 readers)
+      x: fin(L.x, 0), y: fin(L.y, 0),
+      scale: fin(L.scale, 1) > 0 ? fin(L.scale, 1) : 1,
+      rot: normRot(L.rot),
+      flipH: !!L.flipH, flipV: !!L.flipV,
+      opacity: clamp(fin(L.opacity, 1), 0, 1),
+      blend: BLEND_OPS.has(L.blend) ? L.blend : 'source-over',
+      visible: L.visible !== false,
+      bright: clamp(fin(L.bright, 1), .05, 4), contrast: clamp(fin(L.contrast, 1), .05, 4),
+      // nested geometry (v4 readers) — same values, one object to diff/restore
+      transform: {
+        x: fin(L.x, 0), y: fin(L.y, 0),
+        scale: fin(L.scale, 1) > 0 ? fin(L.scale, 1) : 1,
+        rot: normRot(L.rot), flipH: !!L.flipH, flipV: !!L.flipV,
+      },
+      quad: normQuad(L.quad),
+      mask: normMask(L.mask, id),
+    };
   }
   return {
-    app: 'BoardExplorer', version: 3, savedAt: new Date().toISOString(), project: S.project,
+    app: 'BoardExplorer', version: 4, savedAt: new Date().toISOString(), project: S.project,
     mirrorBack: S.mirrorBack, layers, pads: S.pads, nextId: S.nextId,
     mcu: { name: S.mcu.name, n: S.mcu.n, x: S.mcu.x, y: S.mcu.y, w: S.mcu.w, h: S.mcu.h,
       rot: S.mcu.rot, corner: S.mcu.corner, pinFill: S.mcu.pinFill, pinLen: S.mcu.pinLen,
@@ -2031,49 +2085,230 @@ function sessionObject(withImages = true) {
       targetPitch: S.mcu.targetPitch || null, pins: S.mcu.pins },
     links: S.links, traces: S.traces, nextTraceId: S.nextTraceId,
     cal: S.cal, useMm: S.useMm,
-    view: S.view, pin1: S.pin1, guides: S.guides,
+    view: { zoom: S.view.zoom, tx: S.view.tx, ty: S.view.ty },
+    pin1: { ...S.pin1 }, guides: { ...S.guides },
   };
 }
 
-async function restoreSession(d) {
-  if (!d || d.app !== 'BoardExplorer') throw new Error('not a BoardExplorer project');
-  S.project = d.project || (d.layers?.front?.name || 'untitled').replace(/\.[^.]+$/, '') || 'untitled';
-  S.mirrorBack = d.mirrorBack !== false;
-  S.pads = (d.pads || []).map(p => ({
-    ...p,
-    via: !!(p.via || p.side === 'via'),
-    net: p.net || '',
-  }));
-  S.nextId = d.nextId || (Math.max(0, ...S.pads.map(p => p.id)) + 1);
-  S.links = d.links || []; S.selectedPad = null; S.hoverPad = null;
-  Object.assign(S.mcu, {
-    corner: .08, pinFill: .5, pinLen: .05, style: 'quad', pkg: 'custom', targetPitch: null,
-  }, d.mcu || {});
-  if (!S.mcu.style) S.mcu.style = 'quad';
-  ensurePins();
-  S.traces = d.traces || [];
-  S.nextTraceId = d.nextTraceId || (Math.max(0, ...S.traces.map(t => t.id)) + 1);
-  S.activeTrace = null;
-  S.cal = d.cal || null;
-  S.useMm = !!d.useMm;
-  S.pin1 = d.pin1 || S.pin1;
-  Object.assign(S.guides, d.guides || {});
-  for (const id of ['front', 'back', 'close']) {
-    const src = (d.layers && d.layers[id]) || {};
-    const L = S.layers[id];
-    Object.assign(L, {
-      name: src.name || '', x: num(src.x, 0), y: num(src.y, 0), scale: num(src.scale, 1),
-      rot: num(src.rot, 0), flipH: !!src.flipH, flipV: !!src.flipV,
-      opacity: num(src.opacity, .8), blend: src.blend || 'source-over', visible: src.visible !== false,
-      bright: num(src.bright, 1), contrast: num(src.contrast, 1),
-      quad: Array.isArray(src.quad) && src.quad.length === 4 ? src.quad : [[0,0],[1,0],[1,1],[0,1]],
-      mask: Object.assign({ on: false, kind: 'ellipse', x: 0, y: 0, rx: 120, ry: 120, feather: .15, invert: false }, src.mask || {}),
-      img: null, src: null, _sd: null, _warp: null,
-    });
-    if (src.src) await setLayerSrc(id, src.src, src.name);
+/* -------------------------------------------------- session normalisation */
+// Everything below is defensive on purpose: a project file may be hand-edited,
+// written by an older build, or truncated by a failed localStorage write. Any
+// bad/missing value must fall back to a safe default instead of throwing or
+// leaving the canvas in a NaN transform.
+const LAYER_IDS = ['front', 'back', 'close'];
+const BLEND_OPS = new Set(['source-over', 'multiply', 'screen', 'overlay', 'darken',
+  'lighten', 'color-dodge', 'color-burn', 'hard-light', 'soft-light',
+  'difference', 'exclusion', 'hue', 'saturation', 'color', 'luminosity']);
+
+const defQuad = () => [[0, 0], [1, 0], [1, 1], [0, 1]];
+const fin = (v, d) => (Number.isFinite(+v) ? +v : d);
+
+function normQuad(q) {
+  const base = defQuad();
+  if (!Array.isArray(q) || q.length !== 4) return base;
+  const out = [];
+  for (let i = 0; i < 4; i++) {
+    const p = Array.isArray(q[i]) ? q[i] : null;
+    const u = p ? fin(p[0], NaN) : NaN;
+    const v = p ? fin(p[1], NaN) : NaN;
+    out.push([
+      Number.isFinite(u) ? clamp(u, -4, 5) : base[i][0],
+      Number.isFinite(v) ? clamp(v, -4, 5) : base[i][1],
+    ]);
   }
-  Object.assign(S.view, d.view || {});
+  // A collapsed quad has no inverse homography; keep the identity instead.
+  return new Set(out.map(([u, v]) => u.toFixed(4) + ',' + v.toFixed(4))).size >= 3 ? out : base;
+}
+
+function normMask(m, id) {
+  const s = (m && typeof m === 'object') ? m : {};
+  return {
+    on: !!s.on,
+    kind: s.kind === 'rect' ? 'rect' : 'ellipse',
+    x: fin(s.x, 0), y: fin(s.y, 0),
+    rx: Math.max(1, fin(s.rx, 120)), ry: Math.max(1, fin(s.ry, 120)),
+    feather: clamp(fin(s.feather, .15), 0, 1),
+    invert: !!s.invert,
+  };
+}
+
+// Wraps any angle into (-180, 180] so `rad()` never sees a huge number.
+const normRot = v => {
+  const a = fin(v, 0);
+  return ((a + 180) % 360 + 360) % 360 - 180;
+};
+
+// Reads a layer's persisted state from either the v4 `transform` block or the
+// v1–v3 flat keys, and always returns a complete, finite state object.
+function layerState(src, id) {
+  const s = (src && typeof src === 'object') ? src : {};
+  const tr = (s.transform && typeof s.transform === 'object') ? s.transform : {};
+  const f = (k, d) => fin(tr[k], fin(s[k], d));
+  const scale = f('scale', 1);
+  return {
+    name: typeof s.name === 'string' ? s.name : '',
+    x: f('x', 0),
+    y: f('y', 0),
+    scale: Number.isFinite(scale) && scale > 0.0001 ? scale : 1,
+    rot: normRot(f('rot', 0)),
+    flipH: !!(tr.flipH ?? s.flipH),
+    flipV: !!(tr.flipV ?? s.flipV),
+    opacity: clamp(fin(s.opacity, id === 'close' ? 1 : .8), 0, 1),
+    blend: BLEND_OPS.has(s.blend) ? s.blend : 'source-over',
+    visible: s.visible !== false,
+    bright: clamp(fin(s.bright, 1), .05, 4),
+    contrast: clamp(fin(s.contrast, 1), .05, 4),
+    quad: normQuad(s.quad),
+    mask: normMask(s.mask, id),
+  };
+}
+
+// Only the geometry subset — used to re-assert transforms after image onload.
+function applyLayerGeometry(L, st) {
+  L.x = st.x; L.y = st.y; L.scale = st.scale; L.rot = st.rot;
+  L.flipH = st.flipH; L.flipV = st.flipV;
+  L.opacity = st.opacity; L.blend = st.blend; L.visible = st.visible;
+  L.bright = st.bright; L.contrast = st.contrast;
+  L.quad = st.quad; L.mask = st.mask;
+  L._warp = null;      // homography cache is keyed on quad — force a rebuild
+  L._sd = null;
+}
+
+async function restoreSession(d) {
+  if (!d || typeof d !== 'object' || d.app !== 'BoardExplorer') throw new Error('not a BoardExplorer project');
+  const layersIn = (d.layers && typeof d.layers === 'object') ? d.layers : {};
+  const warnings = [];
+  const loadFailed = [];
+
+  S.project = d.project || (layersIn.front?.name || 'untitled').replace(/\.[^.]+$/, '') || 'untitled';
+  S.mirrorBack = d.mirrorBack !== false;
+
+  S.pads = (Array.isArray(d.pads) ? d.pads : [])
+    .filter(p => p && Number.isFinite(+p.id))
+    .map(p => ({
+      ...p,
+      id: +p.id,
+      side: p.side === 'back' || p.side === 'via' ? p.side : 'front',
+      via: !!(p.via || p.side === 'via'),
+      net: typeof p.net === 'string' ? p.net : '',
+      label: typeof p.label === 'string' ? p.label : '',
+      notes: typeof p.notes === 'string' ? p.notes : '',
+      color: /^#[0-9a-f]{3,8}$/i.test(p.color || '') ? p.color : '#22d3ee',
+      x: fin(p.x, 0), y: fin(p.y, 0),
+    }));
+  S.nextId = Math.max(fin(d.nextId, 0), ...S.pads.map(p => p.id), 0) + 1;
+
+  const padIds = new Set(S.pads.map(p => p.id));
+  S.links = (Array.isArray(d.links) ? d.links : [])
+    .filter(l => l && padIds.has(+l.pad) && Number.isFinite(+l.pin))
+    .map(l => ({ pad: +l.pad, pin: +l.pin, note: typeof l.note === 'string' ? l.note : 'unknown' }));
+  S.selectedPad = null; S.hoverPad = null;
+
+  Object.assign(S.mcu, {
+    name: '', n: 32, x: 0, y: 0, w: 220, h: 220, rot: 0, base: 220, pins: [],
+    corner: .08, pinFill: .5, pinLen: .05, style: 'quad', pkg: 'custom', targetPitch: null,
+  }, (d.mcu && typeof d.mcu === 'object') ? d.mcu : {});
+  S.mcu.n = clamp(fin(S.mcu.n, 32) | 0, 1, 256);
+  S.mcu.w = Math.max(2, fin(S.mcu.w, 220));
+  S.mcu.h = Math.max(2, fin(S.mcu.h, 220));
+  S.mcu.rot = fin(S.mcu.rot, 0);
+  S.mcu.corner = clamp(fin(S.mcu.corner, .08), 0, .45);
+  S.mcu.pinFill = clamp(fin(S.mcu.pinFill, .5), .08, .95);
+  S.mcu.pinLen = clamp(fin(S.mcu.pinLen, .05), .005, .25);
+  if (!['quad', 'dual', 'module'].includes(S.mcu.style)) S.mcu.style = 'quad';
+  if (!Array.isArray(S.mcu.pins)) S.mcu.pins = [];
+  ensurePins();
+
+  S.traces = (Array.isArray(d.traces) ? d.traces : [])
+    .filter(t => t && Number.isFinite(+t.id))
+    .map(t => ({
+      ...t,
+      id: +t.id,
+      name: typeof t.name === 'string' ? t.name : 'trace ' + t.id,
+      color: /^#[0-9a-f]{3,8}$/i.test(t.color || '') ? t.color : '#22d3ee',
+      side: t.side === 'back' ? 'back' : 'front',
+      visible: t.visible !== false,
+      width: clamp(fin(t.width, 3), .5, 40),
+      pts: (Array.isArray(t.pts) ? t.pts : [])
+        .filter(p => p && Number.isFinite(+p.x) && Number.isFinite(+p.y))
+        .map(p => ({ x: +p.x, y: +p.y })),
+    }));
+  S.nextTraceId = Math.max(fin(d.nextTraceId, 0), ...S.traces.map(t => t.id), 0) + 1;
+  S.activeTrace = null; S.active = 'front';
+
+  // calibration: keep only a usable line (two finite points + positive length)
+  const c = d.cal;
+  S.cal = (c && c.a && c.b && Number.isFinite(+c.mm) && +c.mm > 0
+    && Number.isFinite(+c.a.x) && Number.isFinite(+c.a.y)
+    && Number.isFinite(+c.b.x) && Number.isFinite(+c.b.y))
+    ? { a: { x: +c.a.x, y: +c.a.y }, b: { x: +c.b.x, y: +c.b.y }, mm: +c.mm }
+    : null;
+  S.useMm = !!d.useMm;
+
+  S.pin1 = {
+    x: fin(d.pin1?.x, -150), y: fin(d.pin1?.y, -150), on: d.pin1?.on !== false,
+  };
+  Object.assign(S.guides, {
+    grid: true, cross: true, rulers: true, pin1: true, outline: true,
+  }, (d.guides && typeof d.guides === 'object') ? d.guides : {});
+
+  // transient editor state never survives a load
+  S.persist = null; S.measure = null; S.tool = 'pan'; S.padSide = 'front'; S.cursor = null;
+
+  // 1) transforms first — synchronously, for every layer, before any image is
+  //    decoded. This is what keeps a saved framing even if a photo fails to load.
+  for (const id of LAYER_IDS) {
+    const st = layerState(layersIn[id], id);
+    const L = S.layers[id];
+    applyLayerGeometry(L, st);
+    L.name = st.name;
+    L.img = null; L.src = null; L._tmp = null; L._maskCv = null;
+  }
+
+  // 2) then decode the photos. setLayerSrc is told not to reset the transform,
+  //    not to reframe the viewport and not to autosave a half-loaded project.
+  for (const id of LAYER_IDS) {
+    const src = layersIn[id] || {};
+    if (!src.src) continue;
+    try {
+      await setLayerSrc(id, src.src, src.name, { resetTransform: false, fit: false, save: false });
+    } catch {
+      loadFailed.push(id);
+      const L = S.layers[id];
+      L.img = null; L.src = null;
+    }
+  }
+  if (loadFailed.length) warnings.push('could not decode: ' + loadFailed.join(', '));
+
+  // 3) re-assert geometry once images are in. onload no longer touches it, but
+  //    this guarantees the invariant even if a future edit reintroduces a reset.
+  for (const id of LAYER_IDS) {
+    const st = layerState(layersIn[id], id);
+    const L = S.layers[id];
+    L.x = st.x; L.y = st.y; L.scale = st.scale; L.rot = st.rot;
+    L.flipH = st.flipH; L.flipV = st.flipV; L.opacity = st.opacity;
+    L.blend = st.blend; L.visible = st.visible; L.bright = st.bright; L.contrast = st.contrast;
+    L.quad = st.quad; L.mask = st.mask;
+    L._warp = null;
+  }
+
+  // 4) viewport: honour the saved pan/zoom, otherwise frame the project
+  const v = (d.view && typeof d.view === 'object') ? d.view : {};
+  const z = fin(v.zoom, 0);
+  if (z > 0.005 && Number.isFinite(fin(v.tx, NaN)) && Number.isFinite(fin(v.ty, NaN))) {
+    S.view.zoom = clamp(z, .02, 60);
+    S.view.tx = +v.tx; S.view.ty = +v.ty;
+    VIEW_INIT = true;                 // stop the first render() from recentring
+  } else {
+    VIEW_INIT = false;
+    fitView();
+  }
+
   refreshUi(); updateCalInfo(); updatePitch(); render();
+  // A loaded project becomes the current session, so closing the tab right
+  // after opening a file doesn't silently fall back to the previous project.
+  saveLocal();
+  if (warnings.length) status(warnings.join(' · '));
 }
 
 function refreshUi() {
@@ -2161,17 +2396,43 @@ function status(msg) {
 }
 
 /* ------------------------------------------------------------------- local */
-let saveT;
+let saveT = null;
+let savePending = false;
+
+function writeSession() {
+  savePending = false;
+  try {
+    localStorage.setItem('boardexplorer.session', JSON.stringify(sessionObject(true)));
+  } catch {
+    // A project with two phone photos can exceed the ~5 MB localStorage quota.
+    // Drop the bitmaps but keep every transform, so the framing still survives;
+    // the user re-attaches the photos, everything else is already in place.
+    try {
+      localStorage.setItem('boardexplorer.session', JSON.stringify(sessionObject(false)));
+      status('autosaved layout only (quota) — re-attach photos, framing is kept');
+    } catch { status('autosave failed (quota) — use Save project'); }
+  }
+}
+
 function saveLocal() {
   clearTimeout(saveT);
-  saveT = setTimeout(() => {
-    try { localStorage.setItem('boardexplorer.session', JSON.stringify(sessionObject(true))); }
-    catch {
-      try { localStorage.setItem('boardexplorer.session', JSON.stringify(sessionObject(false))); }
-      catch { status('autosave failed (quota) — use Save project'); }
-    }
-  }, 500);
+  savePending = true;
+  saveT = setTimeout(writeSession, 500);
 }
+
+// Never lose the last 500 ms of work to a reload, a tab close or a phone
+// backgrounding the page. `pagehide` covers Safari, visibilitychange covers
+// mobile, and beforeunload is the belt-and-braces case.
+function flushLocal() {
+  if (!savePending) return;
+  clearTimeout(saveT);
+  writeSession();
+}
+addEventListener('pagehide', flushLocal);
+addEventListener('beforeunload', flushLocal);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') flushLocal();
+});
 
 /* -------------------------------------------------------------------- boot */
 ensurePins();
@@ -2187,17 +2448,23 @@ new ResizeObserver(render).observe($('#stage'));
 (async function boot() {
   try {
     const raw = localStorage.getItem('boardexplorer.session');
-    if (raw) { await restoreSession(JSON.parse(raw)); status('restored last project'); }
-  } catch { /* fresh start */ }
-  if (location.search.includes('selftest')) selftest();
+    if (raw) {
+      await restoreSession(JSON.parse(raw));
+      if (!$('#status').textContent || $('#status').textContent === '—') status('restored last project');
+      else status('restored last project · ' + $('#status').textContent);
+    }
+  } catch (err) {
+    console.error('restore failed', err);
+    status('could not restore last session — starting fresh');
+  }
+  if (location.search.includes('selftest')) await selftest();
 })();
 
 /* ---------------------------------------------------------------- selftest */
-function selftest() {
+async function selftest() {
   const m = { n: 32, w: 200, h: 200, x: 0, y: 0, rot: 0 };
   const p = pinLayout(m);
-  console.assert(p.length === 32, 'pin count', p.length);
-  console.assert(new Set(p.map(q => q.n)).size === 32, 'pin numbers unique');
+  console.assert(p.length === 32, 'pin count', p.length);  console.assert(new Set(p.map(q => q.n)).size === 32, 'pin numbers unique');
   console.assert(p.every(q => Math.abs(Math.abs(q.x) - 100) < 1e-6 || Math.abs(Math.abs(q.y) - 100) < 1e-6), 'pins on perimeter');
   console.assert(p[0].n === 1 && p[0].side === 'left' && p[0].y < 0, 'pin 1 top of left edge');
   console.assert(p[31].n === 32 && p[31].side === 'top', 'pin 32 after one CCW lap');
@@ -2288,8 +2555,134 @@ function selftest() {
   console.assert(S.mcu.n === 32 && S.mcu.style === 'quad' && S.mcu.targetPitch === 0.5, 'QFN-32 preset');
   Object.assign(S.mcu, prev); ensurePins();
 
+  await selftestPersistence();
+
   status('selftest done — see console');
   console.log('%cBoardExplorer selftest passed', 'color:#22d3ee');
+}
+
+/* ------------------------------------------------ persistence round-trip test */
+// Reproduces the reported bug end to end: set a framing, save, wipe, restore
+// and check every visual/spatial parameter survived — including the async
+// image onload path that used to reset rot/scale/pan to defaults.
+async function selftestPersistence() {
+  const tiny = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+  const keeper = sessionObject(true);
+  const near = (a, b) => Math.abs(a - b) < 1e-9;
+
+  // A layer that is already framed, then given a photo: the framing must stay.
+  await setLayerSrc('front', tiny, 'front.png', { resetTransform: true, fit: false, save: false });
+  const framed = { x: 123.5, y: -45.25, scale: 1.42, rot: 33.5 };
+  Object.assign(S.layers.front, framed, { flipH: true, flipV: true });
+  await setLayerSrc('front', tiny, 'front.png', { resetTransform: false, fit: false, save: false });
+  console.assert(near(S.layers.front.rot, 33.5) && near(S.layers.front.scale, 1.42),
+    'replacing a photo keeps the existing framing', S.layers.front.rot, S.layers.front.scale);
+
+  Object.assign(S.layers.front, {
+    ...framed, flipH: true, flipV: true, opacity: .63, blend: 'difference',
+    bright: 1.2, contrast: .85, quad: [[.02, .03], [.97, .01], [.94, .98], [.05, .96]],
+  });
+  S.layers.front.mask = { on: true, kind: 'rect', x: 20, y: -30, rx: 90, ry: 60, feather: .4, invert: true };
+  Object.assign(S.layers.back, { x: -80, y: 40, scale: .77, rot: -12.25, opacity: .5, blend: 'difference' });
+  S.mirrorBack = true;
+  S.cal = { a: { x: 0, y: 0 }, b: { x: 400, y: 0 }, mm: 20 };
+  S.view = { zoom: 3.25, tx: 111.5, ty: -222.25 };
+
+  const before = {
+    world: layerToWorld(S.layers.front, { x: 40, y: -25 }),
+    layer: worldToLayer(S.layers.front, { x: 300, y: 120 }),
+  };
+  const saved = JSON.parse(JSON.stringify(sessionObject(true)));
+  console.assert(saved.version >= 4 && !!saved.layers.front.transform, 'v4 payload carries a transform block');
+
+  // wipe every transform to defaults, as a fresh page would
+  for (const id of LAYER_IDS) {
+    Object.assign(S.layers[id], {
+      img: null, src: null, x: 0, y: 0, scale: 1, rot: 0, flipH: false, flipV: false,
+      opacity: .8, blend: 'source-over', bright: 1, contrast: 1,
+      quad: defQuad(), mask: normMask(null, id),
+    });
+  }
+  S.cal = null; S.view = { zoom: 1, tx: 0, ty: 0 };
+
+  await restoreSession(saved);
+
+  const F = S.layers.front;
+  console.assert(!!F.img, 'restored image decoded');
+  console.assert(near(F.rot, 33.5), 'rotation restored', F.rot);
+  console.assert(near(F.scale, 1.42), 'scale restored', F.scale);
+  console.assert(near(F.x, 123.5) && near(F.y, -45.25), 'pan restored', F.x, F.y);
+  console.assert(F.flipH === true && F.flipV === true, 'flip state restored');
+  console.assert(near(F.opacity, .63) && F.blend === 'difference', 'opacity + blend restored', F.opacity, F.blend);
+  console.assert(near(F.bright, 1.2) && near(F.contrast, .85), 'brightness/contrast restored');
+  console.assert(JSON.stringify(F.quad) === JSON.stringify([[.02, .03], [.97, .01], [.94, .98], [.05, .96]]),
+    'homography corners restored', JSON.stringify(F.quad));
+  console.assert(F.mask.on && F.mask.kind === 'rect' && near(F.mask.rx, 90) && F.mask.invert, 'mask restored');
+  console.assert(near(S.layers.back.rot, -12.25) && S.layers.back.blend === 'difference', 'back layer restored');
+  console.assert(S.cal && near(S.cal.mm, 20) && near(pxPerMm(), 20), 'calibration restored');
+  console.assert(near(S.view.zoom, 3.25) && near(S.view.tx, 111.5) && near(S.view.ty, -222.25),
+    'viewport restored', S.view.zoom);
+  // The homography cache must be rebuilt from the restored quad, never reused
+  // from a previous project. `render()` runs at the end of the restore, so the
+  // warp may already exist — it just has to be keyed to the current quad.
+  const wantKey = (F.src ? F.src.length : 'q') + ':' + JSON.stringify(F.quad);
+  console.assert(F._warp === null || F._warp.key === wantKey,
+    'homography cache keyed to the restored quad', F._warp && F._warp.key);
+  console.assert(F._sd === null || F._sdFor === F.img, 'source pixel cache invalidated');
+  const wp = warped(F);
+  console.assert(wp && wp.canvas && wp.w > 0 && wp.h > 0, 'warped buffer built from the restored quad');
+  console.assert(S.mirrorBack === true, 'mirror-back alignment flag restored');
+
+  const after = {
+    world: layerToWorld(F, { x: 40, y: -25 }),
+    layer: worldToLayer(F, { x: 300, y: 120 }),
+  };
+  console.assert(near(after.world.x, before.world.x) && near(after.world.y, before.world.y),
+    'world projection round-trips');
+  console.assert(near(after.layer.x, before.layer.x) && near(after.layer.y, before.layer.y),
+    'layer-local projection round-trips');
+
+  // v1/v2 payload: no quad, no transform block, no net/via — must not throw
+  await restoreSession({
+    app: 'BoardExplorer', version: 2, project: 'legacy',
+    layers: { front: { x: 12, y: -8, scale: 1.5, rot: 15 }, back: {} },
+    pads: [{ id: 1, side: 'front', label: 'TP', notes: '', color: '#22d3ee', x: 1, y: 2 }],
+    links: [{ pad: 1, pin: 1, note: 'unknown' }],
+    mcu: { n: 32, w: 200, h: 200 },
+  });
+  console.assert(near(S.layers.front.rot, 15) && near(S.layers.front.scale, 1.5), 'legacy transform read from flat keys');
+  console.assert(JSON.stringify(S.layers.back.quad) === JSON.stringify(defQuad()), 'missing quad → identity');
+  console.assert(S.layers.back.scale === 1 && S.layers.back.rot === 0, 'missing geometry → safe defaults');
+  console.assert(S.layers.back.blend === 'source-over' && S.layers.back.visible === true, 'missing blend/visible → defaults');
+  console.assert(S.cal === null && S.pads.length === 1 && S.links.length === 1, 'legacy pads/links survive');
+
+  // hostile payload: NaNs, degenerate quad, unknown blend, absurd rotation
+  await restoreSession({
+    app: 'BoardExplorer', version: 4, project: 'hostile',
+    layers: {
+      front: { x: 'abc', y: null, scale: 0, rot: 540, blend: 'nope',
+        quad: [[0, 0], [0, 0], [0, 0], [0, 0]], mask: { rx: -5, feather: 9 } },
+      back: { quad: 'garbage' },
+    },
+    pads: [{ id: 'x' }, null, { id: 3, side: 'nonsense', x: 'NaN' }],
+    links: [{ pad: 99, pin: 1 }, { pad: 3, pin: 'q' }],
+    view: { zoom: 0, tx: 'NaN', ty: null },
+    cal: { a: { x: 0, y: 0 }, b: { x: 0, y: 0 }, mm: 0 },
+  });
+  console.assert(S.layers.front.x === 0 && S.layers.front.y === 0, 'NaN pan → 0');
+  console.assert(near(S.layers.front.scale, 1), 'zero scale → 1');
+  console.assert(near(S.layers.front.rot, -180), 'rotation wrapped into range', S.layers.front.rot);
+  console.assert(S.layers.front.blend === 'source-over', 'unknown blend → source-over');
+  console.assert(JSON.stringify(S.layers.front.quad) === JSON.stringify(defQuad()), 'degenerate quad → identity');
+  console.assert(S.layers.front.mask.rx >= 1 && S.layers.front.mask.feather === 1, 'mask clamped');
+  console.assert(JSON.stringify(S.layers.back.quad) === JSON.stringify(defQuad()), 'non-array quad → identity');
+  console.assert(S.pads.length === 1 && S.pads[0].id === 3, 'invalid pads dropped');
+  console.assert(S.links.length === 0, 'links pointing at dropped pads removed');
+  console.assert(S.cal === null, 'zero-length calibration dropped');
+  console.assert(S.view.zoom > 0, 'invalid viewport fell back to a usable zoom', S.view.zoom);
+
+  // restore whatever was on screen before the test
+  await restoreSession(keeper);
 }
 })();
 </script>
