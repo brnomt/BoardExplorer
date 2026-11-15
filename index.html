@@ -310,6 +310,28 @@
         <button id="mcuToMm" class="btn small" title="convert W to mm using the calibration">W→mm</button>
         <button id="mcuFromMm" class="btn small" title="set W from a mm value">mm→W</button>
       </div>
+      <details id="pinoutHelp" style="margin-top:8px">
+        <summary style="cursor:pointer;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.8px">
+          pinout table — what is this?
+        </summary>
+        <p class="hint" style="margin:6px 0 4px">
+          It <b>names the pins of the MCU package</b>, nothing else. Paste the datasheet's
+          pin list once and every pin stops being "pin 12" and becomes
+          <b>PA3 / SWCLK</b> in the Pins list, in traces and in the CSV.
+        </p>
+        <p class="hint" style="margin:0 0 6px">
+          One pin per line: <code>number,name,function</code>. The function part is free
+          text — paste straight from a datasheet table:
+        </p>
+        <pre class="hint" style="margin:0 0 6px;padding:6px;background:#0e131a;border:1px solid var(--line);border-radius:5px;overflow-x:auto;font-size:11px">1,PA0,GPIO / SWCLK
+2,PA1,GPIO / SWDIO
+3,PA2,ADC0</pre>
+        <p class="hint" style="margin:0">
+          It does <b>not</b> connect pins to pads. That link is the
+          <b>Pins</b> list: select a pad on the canvas, then click the pin it
+          rings out to. Do that once per pad and the mapping is complete.
+        </p>
+      </details>
       <label class="sl">pinout table — one <code>pin#,name,function</code> per line
         <textarea id="mcuCsv" rows="3" style="width:100%;resize:vertical"
           placeholder="1,PA0,GPIO&#10;2,PA1,SWCLK"></textarea>
@@ -331,6 +353,10 @@
 
     <section>
       <h2>Pins <span class="hint">pick a pad, then a pin</span></h2>
+      <p class="hint" style="margin:0 0 6px">
+        This is where the mapping is made: select a pad on the canvas, then click
+        the MCU pin it rings out to. Repeat.
+      </p>
       <div class="list" id="pinList"></div>
     </section>
 
@@ -346,6 +372,7 @@
           <option value="crystal">Y · crystal</option>
           <option value="transistor">Q · transistor</option>
           <option value="connector">J · connector</option>
+          <option value="fpc">J · FPC / flex</option>
           <option value="testpoint">TP · test point</option>
           <option value="ic">U · IC / other</option>
         </select>
@@ -466,6 +493,7 @@ const COMP_KINDS = {
   crystal: { prefix: 'Y', label: 'crystal', fields: ['value'], defaults: { value: '32.768k' } },
   transistor: { prefix: 'Q', label: 'transistor', fields: ['value'], defaults: { value: '2N7002' } },
   connector: { prefix: 'J', label: 'connector', fields: ['value', 'pins'], defaults: { value: 'JST', pins: '2' } },
+  fpc: { prefix: 'J', label: 'FPC', fields: ['pins', 'pitch'], defaults: { pins: '10', pitch: '0.5' } },
   testpoint: { prefix: 'TP', label: 'test point', fields: [], defaults: {} },
   ic: { prefix: 'U', label: 'IC', fields: ['value'], defaults: { value: '' } },
 };
@@ -1034,6 +1062,31 @@ function drawComponents(g) {
         }
         break;
       }
+      case 'fpc': {
+        // A flex connector: a row of finger contacts along one edge, numbered.
+        // `pins` sets how many; the same count drives "make pads".
+        const n = clamp(parseInt(c.pins, 10) || 10, 2, 60);
+        const span = half * 1.7;
+        const cw = span / n;
+        g.strokeRect(-half * .92, -half * .5, half * 1.84, half * .78);
+        for (let i = 0; i < n; i++) {
+          const x = -span / 2 + (i + .5) * cw;
+          const cwid = Math.min(cw * .62, half * .9 / n);
+          g.fillStyle = '#0a0e13cc';
+          g.fillRect(x - cwid / 2, -half * .24, cwid, half * .62);
+          g.strokeRect(x - cwid / 2, -half * .24, cwid, half * .62);
+          if (n <= 20) {
+            g.save();
+            g.font = `${clamp(8 / z, 4, 14)}px ui-monospace,monospace`;
+            g.fillStyle = '#8b97a8';
+            g.textAlign = 'center';
+            g.textBaseline = 'top';
+            g.fillText(String(i + 1), x, half * .42);
+            g.restore();
+          }
+        }
+        break;
+      }
       case 'testpoint': {
         g.beginPath(); g.arc(0, 0, half * .46, 0, 7); g.stroke();
         g.beginPath(); g.arc(0, 0, half * .16, 0, 7); g.stroke();
@@ -1063,6 +1116,21 @@ function drawComponents(g) {
       g.fillText('▤', half + 8 / z, -half - 8 / z);
     }
     g.restore();
+
+    // Pin names and pad status, drawn unrotated so they stay readable.
+    if (sel && (c.kind === 'fpc' || c.kind === 'connector')) {
+      const pts = compPinPositions(c);
+      g.save();
+      g.font = `${clamp(8 / z, 4, 16)}px ui-sans-serif,system-ui`;
+      g.textAlign = 'center'; g.textBaseline = 'top';
+      for (const p of pts) {
+        const hasPad = S.pads.some(q => q.compId === c.id && q.compPin === p.n);
+        const nm = compPinName(c, p.n);
+        g.fillStyle = hasPad ? '#4ade80' : '#8b97a8';
+        g.fillText(nm || String(p.n), p.x, p.y + 7 / z);
+      }
+      g.restore();
+    }
   }
   g.restore();
 }
@@ -2051,10 +2119,28 @@ function parsePinCsv(text) {
   if (!rows.length) return;
   const parsed = [];
   for (const line of rows) {
-    const parts = line.split(/[,;\t]/).map(s => s.trim());
-    const n = parseInt(parts[0], 10);
+    // Accept "12,PA3,SWCLK", "12;PA3;SWDIO", "12<TAB>PA3<TAB>ADC0" and
+    // "12 PA3 SWCLK" — pasting a datasheet table keeps whatever separators it
+    // had, including runs of spaces.
+    const parts = line.split(/[,;\t]+/).map(s => s.trim()).filter(Boolean);
+    let n, name, fn;
+    if (parts.length > 1 && /^\d+$/.test(parts[0])) {
+      n = parseInt(parts[0], 10);
+      name = parts[1] || '';
+      fn = parts.slice(2).join(' ').trim();
+    } else {
+      const m = line.match(/^(\d+)[\s:.\-]+(.+)$/);
+      if (!m) continue;
+      n = parseInt(m[1], 10);
+      const rest = m[2].trim();
+      // split the remainder on the first run of spaces: name, then function
+      const sm = rest.match(/^(\S+)\s*(.*)$/);
+      name = sm ? sm[1] : rest;
+      fn = sm ? sm[2].trim() : '';
+    }
     if (!Number.isFinite(n) || n < 1) continue;
-    parsed.push({ n, name: parts[1] || '', fn: parts.slice(2).join(' ').trim() });
+    if (!name) continue;
+    parsed.push({ n, name, fn });
   }
   if (!parsed.length) return;
   const maxN = Math.max(...parsed.map(p => p.n));
@@ -2269,6 +2355,7 @@ function addPad(w, opts = {}) {
     x: w.x, y: w.y,
   };
   S.pads.push(p); S.selectedPad = p.id;
+  if (opts.silent) return p;      // bulk creation: caller renders once at the end
   renderTables(); render(); saveLocal();
   histCommit(via ? 'add via' : 'add pad');
   return p;
@@ -2347,6 +2434,106 @@ function deleteComponent(id) {
 
 function compById(id) { return S.components.find(c => c.id === id) || null; }
 const selectedComponent = () => compById(S.selectedComp);
+
+/* ------------------------------------------------- component pin geometry */
+// Where each pin/finger of a component sits in WORLD space, so pads can be
+// generated from it and so a trace can snap to it.
+function compPinPositions(c) {
+  if (!c) return [];
+  const s = Math.max(8, num(c.size, 46));
+  const half = s / 2;
+  const rot = rad(num(c.rot, 0));
+  const cos = Math.cos(rot), sin = Math.sin(rot);
+  const toWorld = (lx, ly) => ({
+    x: c.x + lx * cos - ly * sin,
+    y: c.y + lx * sin + ly * cos,
+  });
+
+  const out = [];
+  if (c.kind === 'fpc') {
+    const n = clamp(parseInt(c.pins, 10) || 10, 2, 60);
+    const span = half * 1.7;
+    for (let i = 0; i < n; i++) {
+      const x = -span / 2 + (i + .5) * span / n;
+      out.push({ n: i + 1, ...toWorld(x, 0) });
+    }
+    return out;
+  }
+  if (c.kind === 'connector') {
+    const n = clamp(parseInt(c.pins, 10) || 2, 1, 12);
+    const span = half * 1.4;
+    for (let i = 0; i < n; i++) {
+      const x = -span / 2 + (i + .5) * span / n;
+      out.push({ n: i + 1, ...toWorld(x, 0) });
+    }
+    return out;
+  }
+  // A two-lead part still has two useful pin positions.
+  if (['resistor', 'capacitor', 'inductor', 'diode', 'led', 'crystal'].includes(c.kind)) {
+    out.push({ n: 1, ...toWorld(-half * 1.2, 0) });
+    out.push({ n: 2, ...toWorld(half * 1.2, 0) });
+  }
+  return out;
+}
+
+// Pin names for a component. `c.pinNames` is a sparse map: {"1":"VBUS"}.
+const compPinName = (c, n) => {
+  const nm = c && c.pinNames && c.pinNames[n];
+  return (typeof nm === 'string' && nm.trim()) ? nm.trim() : '';
+};
+
+// Create one pad per component pin, labelled "<REF>.<n>: <name>", so the pads
+// are immediately linkable to MCU pins and show up in the CSV.
+function makePadsFromComponent(id) {
+  const c = compById(id);
+  if (!c) return 0;
+  const pts = compPinPositions(c);
+  if (!pts.length) { status('this component has no pins to expose'); return 0; }
+  const ref = compRef(c);
+  let made = 0;
+  for (const p of pts) {
+    // Reuse an existing pad at the same spot so pressing twice doesn't stack.
+    const near = S.pads.find(q => Math.hypot(q.x - p.x, q.y - p.y) < 2);
+    const label = `${ref}.${p.n}${compPinName(c, p.n) ? ': ' + compPinName(c, p.n) : ''}`;
+    if (near) {
+      near.label = label;
+      near.compId = c.id;
+      near.compPin = p.n;
+      made++;
+      continue;
+    }
+    const pad = addPad({ x: p.x, y: p.y }, { silent: true });
+    pad.label = label;
+    pad.compId = c.id;
+    pad.compPin = p.n;
+    pad.color = '#f59e0b';
+    made++;
+  }
+  renderTables(); render(); saveLocal();
+  histCommit('pads from ' + ref);
+  status(`${made} pad${made === 1 ? '' : 's'} created for ${ref} — link them to MCU pins in the Pins list`);
+  return made;
+}
+
+// Parse a pin-name list typed by the user: one per line, or comma separated.
+// "1 VBUS" / "1,VBUS" / just "VBUS,D-,D+" (numbered in order).
+function applyCompPinNames(id, text) {
+  const c = compById(id);
+  if (!c) return;
+  const lines = String(text || '').split(/[\r\n,;]+/).map(s => s.trim()).filter(Boolean);
+  const map = {};
+  let auto = 1;
+  for (const raw of lines) {
+    const m = raw.match(/^(\d+)\s*[:=.\- ]\s*(.+)$/);
+    if (m) map[+m[1]] = m[2].trim();
+    else map[auto++] = raw;
+  }
+  c.pinNames = map;
+  renderComponents(); render(); saveLocal();
+  histCommit('component pin names');
+  const n = Object.keys(map).length;
+  status(`${n} pin name${n === 1 ? '' : 's'} set on ${compRef(c)}`);
+}
 
 cv.addEventListener('pointerdown', e => {
   try { cv.setPointerCapture(e.pointerId); } catch { /* synthetic events have no active pointer */ }
@@ -2881,6 +3068,9 @@ function renderComponents() {
   host.innerHTML = S.components.map(c => {
     const k = COMP_KINDS[c.kind] || COMP_KINDS.ic;
     const doc = S.docs.find(d => d.id === c.docId);
+    const pinPts = compPinPositions(c);
+    const named = c.pinNames ? Object.keys(c.pinNames).length : 0;
+    const padCount = S.pads.filter(p => p.compId === c.id).length;
     return `
     <div class="compcard card${S.selectedComp === c.id ? ' sel' : ''}" data-comp="${c.id}">
       <div class="row">
@@ -2899,9 +3089,29 @@ function renderComponents() {
         </select>
         ${c.docId ? `<button data-copen="${c.docId}" style="padding:0 5px" title="open datasheet">▤</button>` : ''}
       </div>
-      ${doc ? '' : ''}
+      ${pinPts.length ? `
+      <div class="row" style="margin:4px 0 0">
+        <button data-cpads="${c.id}" class="btn small" title="create one pad per pin, ready to link">⊕ make ${pinPts.length} pads</button>
+        <span class="hint" style="margin:0;font-size:10px">${padCount ? padCount + ' pad' + (padCount === 1 ? '' : 's') + ' made' : ''}</span>
+      </div>
+      <details style="margin-top:4px" ${c.kind === 'fpc' ? 'open' : ''}>
+        <summary class="hint" style="cursor:pointer;font-size:10px;margin:0">
+          pin names${named ? ' (' + named + ')' : ''}
+        </summary>
+        <textarea data-cpinnames="${c.id}" rows="3" style="width:100%;font-size:10px;margin-top:3px;resize:vertical"
+          placeholder="1 VBUS&#10;2 D-&#10;3 D+&#10;…or just: VBUS,D-,D+"
+          aria-label="pin names for ${esc(compRef(c))}">${esc(pinNamesToText(c))}</textarea>
+      </details>` : ''}
     </div>`;
   }).join('');
+}
+
+// Render the sparse pinNames map back into the textarea's line format.
+function pinNamesToText(c) {
+  if (!c.pinNames) return '';
+  return Object.keys(c.pinNames)
+    .map(Number).sort((a, b) => a - b)
+    .map(n => n + ' ' + c.pinNames[n]).join('\n');
 }
 
 const renderTables = () => { renderPins(); renderPads(); renderLinks(); renderComponents(); renderDocs(); };
@@ -2947,6 +3157,8 @@ $('#compList').addEventListener('click', e => {
   if (del) { deleteComponent(+del.dataset.cdel); return; }
   const open = e.target.closest('[data-copen]');
   if (open) { openDoc(open.dataset.copen); return; }
+  const mkPads = e.target.closest('[data-cpads]');
+  if (mkPads) { makePadsFromComponent(+mkPads.dataset.cpads); return; }
   const card = e.target.closest('[data-comp]');
   if (!card || e.target.matches('input,select,button')) return;
   S.selectedComp = +card.dataset.comp;
@@ -2962,6 +3174,8 @@ $('#compList').addEventListener('input', e => {
   render(); saveLocal(); histSoon('component ' + el.dataset.cf);
 });
 $('#compList').addEventListener('change', e => {
+  const pn = e.target.closest('textarea[data-cpinnames]');
+  if (pn) { applyCompPinNames(+pn.dataset.cpinnames, pn.value); return; }
   const el = e.target.closest('select[data-cf=docId]');
   if (!el) return;
   const c = compById(+el.dataset.comp);
@@ -3323,6 +3537,9 @@ async function restoreSession(d) {
       notes: typeof p.notes === 'string' ? p.notes : '',
       color: /^#[0-9a-f]{3,8}$/i.test(p.color || '') ? p.color : '#22d3ee',
       x: fin(p.x, 0), y: fin(p.y, 0),
+      // provenance when the pad was generated from a component footprint
+      compId: Number.isFinite(+p.compId) ? +p.compId : null,
+      compPin: Number.isFinite(+p.compPin) ? +p.compPin : null,
     }));
   S.nextId = Math.max(fin(d.nextId, 0), ...S.pads.map(p => p.id), 0) + 1;
 
@@ -3398,6 +3615,7 @@ async function restoreSession(d) {
         rot: normRot(c.rot),
         size: clamp(fin(c.size, 46), 10, 600),
         pins: c.pins !== undefined ? c.pins : base.pins,
+        pinNames: (c.pinNames && typeof c.pinNames === 'object') ? c.pinNames : {},
       };
     });
   S.nextCompId = Math.max(fin(d.nextCompId, 0), ...S.components.map(c => c.id), 0) + 1;
@@ -3566,9 +3784,10 @@ $('#savePNG').addEventListener('click', () => {
 });
 $('#saveCSV').addEventListener('click', () => {
   const q = s => '"' + String(s ?? '').replace(/"/g, '""') + '"';
-  const rows = [['pad', 'side', 'via', 'net', 'label', 'notes', 'mcu_pin', 'mcu_name', 'mcu_function', 'continuity']];
+  const rows = [['pad', 'side', 'via', 'net', 'label', 'notes', 'component', 'mcu_pin', 'mcu_name', 'mcu_function', 'continuity']];
   for (const p of S.pads) {
     const l = linkOf(p.id), pin = l ? S.mcu.pins[l.pin - 1] : null;
+    const comp = p.compId != null ? compById(p.compId) : null;
     rows.push([
       p.id,
       isVia(p) ? 'via' : p.side,
@@ -3576,6 +3795,7 @@ $('#saveCSV').addEventListener('click', () => {
       padNet(p),
       p.label,
       p.notes,
+      comp ? compRef(comp) + (p.compPin != null ? '.' + p.compPin : '') : '',
       l ? l.pin : '',
       pin ? pin.name : '',
       pin ? pin.fn : '',
@@ -4194,6 +4414,7 @@ async function selftest() {
   await selftestComponents();
   await selftestToolsTraces();
   await selftestAlign();
+  await selftestFpc();
 
   if (selftestFailures) {
     status(`selftest FAILED — ${selftestFailures} assertion${selftestFailures === 1 ? '' : 's'} (see console)`);
@@ -4526,6 +4747,104 @@ async function selftestAlign() {
 }
 
 const near2 = (a, b, tol = 1e-6) => Math.abs(a - b) < tol;
+
+/* ------------------------------------------------------ FPC / pinout test */
+async function selftestFpc() {
+  const keeper = sessionObject(true);
+  const nPads0 = S.pads.length;
+
+  const fpc = addComponent({ x: 100, y: 100 }, 'fpc');
+  check(fpc.kind === 'fpc', 'fpc component created');
+  check(compRef(fpc) === 'J' + fpc.id, 'fpc uses the J prefix', compRef(fpc));
+  check(String(fpc.pins) === '10', 'default 10 pins', fpc.pins);
+
+  // Pin geometry: 10 evenly spaced fingers in a row at the component centre.
+  const pts = compPinPositions(fpc);
+  check(pts.length === 10, '10 pin positions', pts.length);
+  check(pts.every(p => near2(p.y, 100)), 'fingers share a row', JSON.stringify(pts.map(p => p.y)));
+  const xs = pts.map(p => p.x);
+  check(xs.every((x, i) => i === 0 || x > xs[i - 1]), 'fingers are ordered left to right');
+  check(new Set(pts.map(p => p.n)).size === 10, 'pin numbers unique');
+
+  // Rotating the component rotates the row, and pin 1 stays first.
+  fpc.rot = 90;
+  const rotPts = compPinPositions(fpc);
+  check(rotPts.every(p => near2(p.x, 100, 1e-6)), 'row becomes vertical at 90°',
+    JSON.stringify(rotPts.map(p => Math.round(p.x))));
+  fpc.rot = 0;
+
+  // Changing the pin count changes the geometry
+  fpc.pins = '4';
+  check(compPinPositions(fpc).length === 4, 'pin count drives geometry');
+  fpc.pins = '10';
+
+  // Pin names: explicit numbers and bare order both work
+  applyCompPinNames(fpc.id, '1 VBUS\n2 D-\n3 D+');
+  check(compPinName(fpc, 1) === 'VBUS' && compPinName(fpc, 2) === 'D-', 'numbered pin names parsed');
+  check(compPinName(fpc, 9) === '', 'unnamed pin returns empty');
+  applyCompPinNames(fpc.id, 'A,B,C');
+  check(compPinName(fpc, 1) === 'A' && compPinName(fpc, 3) === 'C', 'bare list numbered in order');
+  applyCompPinNames(fpc.id, '1 VBUS\n2 D-\n3 D+\n4 GND');
+  check(pinNamesToText(fpc).split('\n').length === 4, 'pin names round-trip to text');
+
+  // makePadsFromComponent creates one pad per pin, at the pin positions,
+  // labelled with the component reference and carrying provenance.
+  const made = makePadsFromComponent(fpc.id);
+  check(made === 10, 'made 10 pads', made);
+  check(S.pads.length === nPads0 + 10, 'pad count grew by 10', S.pads.length);
+  const fpcPads = S.pads.filter(p => p.compId === fpc.id);
+  check(fpcPads.length === 10, 'pads carry the component id');
+  const pinPts = compPinPositions(fpc);
+  let maxOff = 0;
+  for (const p of fpcPads) {
+    const want = pinPts.find(q => q.n === p.compPin);
+    if (want) maxOff = Math.max(maxOff, Math.hypot(p.x - want.x, p.y - want.y));
+  }
+  check(maxOff < 0.01, 'each pad sits on its pin', maxOff.toFixed(4));
+  check(/^J\d+\.1: VBUS$/.test(fpcPads.find(p => p.compPin === 1).label),
+    'pad label carries ref, pin and name', fpcPads.find(p => p.compPin === 1).label);
+
+  // pressing again reuses the pads instead of stacking duplicates
+  const again = makePadsFromComponent(fpc.id);
+  check(again === 10, 'second call reports the same pads', again);
+  check(S.pads.filter(p => p.compId === fpc.id).length === 10, 'no duplicate pads on re-run',
+    S.pads.filter(p => p.compId === fpc.id).length);
+
+  // a FPC pad can be linked to an MCU pin like any other pad
+  S.mcu.n = 32; S.mcu.pins = []; ensurePins();
+  S.mcu.pins[4].name = 'PA3';
+  const target = fpcPads.find(p => p.compPin === 1);
+  S.links = S.links.filter(l => l.pad !== target.id);
+  addLink(target.id, 5);
+  check(linkOf(target.id) && linkOf(target.id).pin === 5, 'fpc pad linked to an MCU pin');
+
+  // provenance and pin names survive save/load
+  const snap = sessionObject(false);
+  const savedFpc = snap.components.find(c => c.id === fpc.id);
+  check(savedFpc && savedFpc.pinNames && savedFpc.pinNames['1'] === 'VBUS', 'pin names serialised');
+  const savedPad = snap.pads.find(p => p.id === target.id);
+  check(savedPad.compId === fpc.id && savedPad.compPin === 1, 'pad provenance serialised',
+    JSON.stringify(savedPad));
+  await restoreSession(snap);
+  const backFpc = compById(fpc.id);
+  check(backFpc && compPinName(backFpc, 1) === 'VBUS', 'pin names survive load');
+  check(S.pads.some(p => p.compId === fpc.id && p.compPin === 1), 'provenance survives load');
+
+  // pinout table: separators people actually paste from a datasheet
+  S.mcu.pins = []; ensurePins();
+  parsePinCsv('1,PA0,GPIO / SWCLK\n2;PA1;SWDIO\n3\tPA2\tADC0\n5 PA5 I2C_SCL');
+  check(S.mcu.pins[0].name === 'PA0' && S.mcu.pins[0].fn === 'GPIO / SWCLK', 'comma form', S.mcu.pins[0].fn);
+  check(S.mcu.pins[1].name === 'PA1' && S.mcu.pins[1].fn === 'SWDIO', 'semicolon form');
+  check(S.mcu.pins[2].name === 'PA2' && S.mcu.pins[2].fn === 'ADC0', 'tab form');
+  check(S.mcu.pins[4].name === 'PA5' && /I2C/.test(S.mcu.pins[4].fn), 'space form', JSON.stringify(S.mcu.pins[4]));
+
+  // a component without pins reports cleanly
+  const res = addComponent({ x: 0, y: 0 }, 'resistor');
+  check(compPinPositions(res).length === 2, 'two-lead part exposes two pins');
+
+  histReset();
+  await restoreSession(keeper);
+}
 
 /* ------------------------------------------- components / documents test */
 async function selftestComponents() {
