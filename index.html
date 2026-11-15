@@ -392,7 +392,7 @@ const S = {
   pads: [], nextId: 1, selectedPad: null, padSide: 'front', hoverPad: null,
   components: [], nextCompId: 1, selectedComp: null,
   docs: [],               // metadata only; bytes live in IndexedDB
-  traces: [], nextTraceId: 1, activeTrace: null,
+  traces: [], nextTraceId: 1, activeTrace: null, hoverTrace: null,
   mcu: { name: '', n: 32, x: 0, y: 0, w: 220, h: 220, rot: 0, base: 220, pins: [],
     corner: 0.08,     // fraction of each edge left empty at the corners
     pinFill: 0.5,     // pin width as a fraction of the pitch
@@ -742,20 +742,69 @@ function drawTraces(g) {
   g.lineCap = 'round'; g.lineJoin = 'round';
   for (const t of S.traces) {
     if (!t.visible || t.pts.length < 1) continue;
+    const isActive = S.activeTrace === t.id;
+    const isHover = S.hoverTrace === t.id;
+    const dim = (S.activeTrace != null && !isActive && !isHover);
+
+    // Halo: makes an active/hovered trace readable over a busy photo without
+    // changing its colour, and lets a dimmed trace still show where it runs.
+    if (isActive || isHover) {
+      g.save();
+      g.strokeStyle = '#ffffff';
+      g.globalAlpha = isActive ? 0.32 : 0.18;
+      g.lineWidth = Math.max(1.5 / z, t.width) + 6 / z;
+      g.beginPath();
+      t.pts.forEach((p, i) => i ? g.lineTo(p.x, p.y) : g.moveTo(p.x, p.y));
+      if (t.pts.length === 1) g.lineTo(t.pts[0].x + .01, t.pts[0].y);
+      g.stroke();
+      g.restore();
+    }
+
     g.strokeStyle = t.color;
     g.lineWidth = Math.max(1.5 / z, t.width);
     if (t.side === 'back') g.setLineDash([6 / z, 4 / z]);
-    g.globalAlpha = S.activeTrace === t.id ? 1 : 0.85;
+    g.globalAlpha = dim ? 0.25 : 1;
     g.beginPath();
     t.pts.forEach((p, i) => i ? g.lineTo(p.x, p.y) : g.moveTo(p.x, p.y));
     if (t.pts.length === 1) g.lineTo(t.pts[0].x + .01, t.pts[0].y);
     g.stroke();
     g.setLineDash([]);
-    // waypoints
-    const r = 3.2 / z;
+
+    // waypoints: bigger and ringed while the trace is being edited
+    const r = (isActive ? 4.4 : 3.2) / z;
     for (const p of t.pts) {
       g.beginPath(); g.arc(p.x, p.y, r, 0, 7);
       g.fillStyle = t.color; g.fill();
+      if (isActive) {
+        g.strokeStyle = '#0a0e13'; g.lineWidth = 1.4 / z; g.stroke();
+      }
+    }
+
+    // Endpoint pads/pins touched by the copper, drawn as small squares so a
+    // trace reads as "from this pad to that pin" and not just a wandering line.
+    g.globalAlpha = dim ? 0.3 : 1;
+    const s = 5 / z;
+    for (const pid of (t.pads || [])) {
+      const p = S.pads.find(x => x.id === pid);
+      if (!p) continue;
+      g.fillStyle = p.color;
+      g.fillRect(p.x - s, p.y - s, s * 2, s * 2);
+      g.strokeStyle = '#0a0e13'; g.lineWidth = 1 / z; g.strokeRect(p.x - s, p.y - s, s * 2, s * 2);
+    }
+
+    // Name label, drawn upright at the trace midpoint (or first point).
+    if (t.name && (isActive || isHover || t.showLabel)) {
+      const mid = t.pts[Math.floor((t.pts.length - 1) / 2)] || t.pts[0];
+      const txt = String(t.name);
+      g.font = `${clamp(11 / z, 6, 26)}px ui-sans-serif,system-ui`;
+      g.textAlign = 'center'; g.textBaseline = 'bottom';
+      const wTxt = g.measureText(txt).width;
+      const bx = mid.x, by = mid.y - 8 / z;
+      g.globalAlpha = dim ? 0.4 : 1;
+      g.fillStyle = '#0a0e13dd';
+      g.fillRect(bx - wTxt / 2 - 4 / z, by - 14 / z, wTxt + 8 / z, 15 / z);
+      g.fillStyle = t.color;
+      g.fillText(txt, bx, by);
     }
   }
   g.globalAlpha = 1;
@@ -1401,11 +1450,13 @@ function buildStack() {
     </div>`);
   }
   for (const t of [...S.traces].reverse()) {
+    const padN = (t.pads || []).length;
+    const pinN = (t.pins || []).length;
     rows.push(`<div class="lay${t.id === S.activeTrace ? ' sel' : ''}${t.visible ? '' : ' off'}" data-trace="${t.id}">
       <span class="eye" data-teye="${t.id}">${t.visible ? '◉' : '○'}</span>
       <span class="sw" style="background:${t.color}"></span>
-      <span class="nm">${esc(t.name)}</span>
-      <span class="sub">${t.pts.length}pt ${t.side === 'back' ? 'B' : 'F'}</span>
+      <span class="nm">${esc(t.name || 'trace ' + t.id)}</span>
+      <span class="sub">${t.pts.length}pt${padN ? ' · ' + padN + 'p' : ''}${pinN ? ' · ' + pinN + 'pin' : ''} ${t.side === 'back' ? 'B' : 'F'}</span>
     </div>`);
   }
   host.innerHTML = rows.join('');
@@ -1531,7 +1582,27 @@ function buildTraceEditor(host) {
         <div class="sl" style="margin-top:6px">connected MCU pins</div>
         <div class="chips">${pinList || '<span class="hint" style="margin:0">none</span>'}</div>` : ''}
 
-      <p class="hint" style="margin:6px 0 0">click waypoints · <kbd>Enter</kbd> finish · drag a dot to move it</p>
+      <div class="sl" style="margin-top:8px">edit</div>
+      <div class="row" style="margin:0 0 4px">
+        <button type="button" class="btn small" data-tact="reverse" title="flip the direction">⇄ reverse</button>
+        <button type="button" class="btn small" data-tact="autoname" title="name it after the pads/pins it touches">auto-name</button>
+        <button type="button" class="btn small" data-tact="label" title="show the name on the canvas">${t.showLabel ? 'hide name' : 'show name'}</button>
+      </div>
+      <div class="row" style="margin:0 0 4px">
+        <label class="mini-chk" style="font-size:11px">point
+          <select data-t-pt style="font-size:11px" aria-label="waypoint index">
+            ${t.pts.map((_, i) => `<option value="${i}">#${i + 1}${i === 0 ? ' (start)' : i === t.pts.length - 1 ? ' (end)' : ''}</option>`).join('')}
+          </select>
+        </label>
+        <button type="button" class="btn small" data-tact="delpt" title="delete the selected point">− point</button>
+        <button type="button" class="btn small" data-tact="split" title="split the trace at the selected point">split</button>
+      </div>
+
+      <p class="hint" style="margin:6px 0 0">
+        <b>${t.pts.length}</b> point${t.pts.length === 1 ? '' : 's'} ·
+        click a trace to select · <kbd>Alt</kbd>+click a line = add point · <kbd>Alt</kbd>+click a dot = remove ·
+        double-click = split · <kbd>Del</kbd> deletes
+      </p>
     </div>`;
   host.querySelector('select[data-t=side]').value = t.side;
 }
@@ -1662,6 +1733,22 @@ $('#layerEditor').addEventListener('click', e => {
   if (padRm) { detachPadFromTrace(S.activeTrace, +padRm); return; }
   const pinRm = e.target.dataset.tpinrm;
   if (pinRm) { detachPinFromTrace(S.activeTrace, +pinRm); return; }
+
+  const tAct = e.target.dataset.tact;
+  if (tAct) {
+    const t = traceById(S.activeTrace);
+    if (!t) return;
+    // Read the point index from the editor this button lives in, not from a
+    // stale closure variable.
+    const editor = e.target.closest('#layerEditor') || document;
+    const ptSel = editor.querySelector('select[data-t-pt]');
+    const idx = ptSel ? +ptSel.value : 0;
+    if (tAct === 'reverse') reverseTrace(t.id);
+    else if (tAct === 'autoname') autoNameTrace(t.id);
+    else if (tAct === 'label') { t.showLabel = !t.showLabel; buildLayerEditor(); render(); saveLocal(); histCommit('trace label'); }
+    else if (tAct === 'delpt') deleteTracePoint(t.id, idx);
+    else if (tAct === 'split') splitTrace(t.id, idx);
+  }
 });
 
 /* ------------------------------------------------------------ tools / ui */
@@ -1909,6 +1996,119 @@ function hitWaypoint(w) {
   }
   return null;
 }
+
+// Nearest point on any trace segment, so a click can select the trace itself
+// (not just a waypoint) — this is how you highlight a trace to see its name.
+function hitTraceSegment(w) {
+  const reach = Math.max(6 / S.view.zoom, 5);
+  let best = null, bd = Infinity;
+  for (const t of S.traces) {
+    if (!t.visible || t.pts.length < 2) continue;
+    const half = Math.max(t.width / 2, 4 / S.view.zoom);
+    for (let i = 0; i < t.pts.length - 1; i++) {
+      const a = t.pts[i], b = t.pts[i + 1];
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const len2 = dx * dx + dy * dy;
+      let u = len2 > 0 ? ((w.x - a.x) * dx + (w.y - a.y) * dy) / len2 : 0;
+      u = clamp(u, 0, 1);
+      const px = a.x + dx * u, py = a.y + dy * u;
+      const d = Math.hypot(w.x - px, w.y - py);
+      const lim = half + reach;
+      if (d < lim && d < bd) { bd = d; best = { trace: t, seg: i, u, x: px, y: py }; }
+    }
+  }
+  return best;
+}
+
+/* --------------------------------------------------------- trace editing */
+function ensureTraceShape(t) {
+  t.pts = Array.isArray(t.pts) ? t.pts : [];
+  t.pads = Array.isArray(t.pads) ? t.pads : [];
+  t.pins = Array.isArray(t.pins) ? t.pins : [];
+  return t;
+}
+
+function insertTracePoint(traceId, seg, w) {
+  const t = traceById(traceId);
+  if (!t || seg == null) return;
+  ensureTraceShape(t);
+  t.pts.splice(seg + 1, 0, { x: w.x, y: w.y });
+  buildStack(); buildLayerEditor(); render(); saveLocal();
+  histCommit('insert trace point');
+  status(`trace ${t.id}: point inserted`);
+}
+
+// Splits one trace into two at a waypoint, so a branch can be re-drawn without
+// deleting the shared run.
+function splitTrace(traceId, index) {
+  const t = traceById(traceId);
+  if (!t) return;
+  ensureTraceShape(t);
+  if (index <= 0 || index >= t.pts.length - 1) { status('pick an interior point to split'); return; }
+  const tail = {
+    ...t,
+    id: S.nextTraceId++,
+    name: (t.name || 'trace') + '·b',
+    pts: t.pts.slice(index).map(p => ({ x: p.x, y: p.y })),
+    pads: [], pins: [],
+  };
+  t.pts = t.pts.slice(0, index + 1);
+  S.traces.push(tail);
+  S.activeTrace = tail.id;
+  buildStack(); buildLayerEditor(); render(); saveLocal();
+  histCommit('split trace');
+  status(`split into trace ${t.id} + ${tail.id}`);
+}
+
+function deleteTracePoint(traceId, index) {
+  const t = traceById(traceId);
+  if (!t) return;
+  ensureTraceShape(t);
+  t.pts.splice(index, 1);
+  // A trace with no geometry left is not worth keeping around.
+  if (!t.pts.length) {
+    S.traces = S.traces.filter(x => x.id !== t.id);
+    if (S.activeTrace === t.id) S.activeTrace = null;
+    status('trace removed (last point deleted)');
+  } else {
+    status(`trace ${t.id}: point deleted`);
+  }
+  buildStack(); buildLayerEditor(); render(); saveLocal();
+  histCommit('delete trace point');
+}
+
+function reverseTrace(traceId) {
+  const t = traceById(traceId);
+  if (!t) return;
+  ensureTraceShape(t);
+  t.pts.reverse();
+  buildLayerEditor(); render(); saveLocal();
+  histCommit('reverse trace');
+  status(`trace ${t.id} reversed`);
+}
+
+// A trace is a "route", so give it a readable name derived from what it touches.
+function autoNameTrace(traceId) {
+  const t = traceById(traceId);
+  if (!t) return;
+  ensureTraceShape(t);
+  const parts = [];
+  for (const pid of t.pads) {
+    const p = S.pads.find(x => x.id === pid);
+    if (!p) continue;
+    const net = padNet(p);
+    parts.push(net ? net + '#' + p.id : '#' + p.id);
+  }
+  for (const n of t.pins) {
+    const pin = S.mcu.pins[n - 1];
+    parts.push(pin && pin.name ? pin.name : 'pin ' + n);
+  }
+  if (!parts.length) { status('nothing attached to name it after'); return; }
+  t.name = parts.slice(0, 3).join('→') + (parts.length > 3 ? '…' : '');
+  buildStack(); buildLayerEditor(); render(); saveLocal();
+  histCommit('auto-name trace');
+  status('named ' + t.name);
+}
 function hitComp(w) {
   const r = 16 / S.view.zoom;
   let best = null, bd = r;
@@ -2139,6 +2339,27 @@ cv.addEventListener('pointerdown', e => {
     drag = { type: 'pad', id: pad.id, dx: w.x - pad.x, dy: w.y - pad.y };
     renderTables(); render(); return;
   }
+  // Clicking a trace (not a waypoint) selects it and reveals its name. Alt+click
+  // on a segment inserts a new point right there, and Alt+click on an existing
+  // point removes it — the usual vector-editor convention.
+  const segHit = hitTraceSegment(w);
+  if (segHit) {
+    S.activeTrace = segHit.trace.id; S.active = null;
+    const wpHit = hitWaypoint(w);
+    if (e.altKey && wpHit && wpHit.trace.id === segHit.trace.id) {
+      deleteTracePoint(wpHit.trace.id, wpHit.i);
+      buildStack(); buildLayerEditor(); render();
+      return;
+    }
+    if (e.altKey) {
+      insertTracePoint(segHit.trace.id, segHit.seg, { x: segHit.x, y: segHit.y });
+      buildStack(); buildLayerEditor(); render();
+      return;
+    }
+    buildStack(); buildLayerEditor(); render();
+    status(`trace ${segHit.trace.id} · ${segHit.trace.name || 'unnamed'}`);
+    return;
+  }
   if (S.guides.pin1 && S.pin1.on && Math.hypot(w.x - S.pin1.x, w.y - S.pin1.y) < 16 / S.view.zoom) {
     drag = { type: 'pin1', dx: w.x - S.pin1.x, dy: w.y - S.pin1.y }; return;
   }
@@ -2177,10 +2398,18 @@ cv.addEventListener('pointermove', e => {
       render();
       return;
     }
+    // Hovering a trace highlights it (and reveals its name) regardless of tool,
+    // so you can identify copper before deciding to edit it.
+    const seg = hitTraceSegment(w);
+    const wp = seg ? null : hitWaypoint(w);
+    const tid = seg ? seg.trace.id : wp ? wp.trace.id : null;
+
     const hp = hitPad(w);
     const nid = hp ? hp.id : null;
-    if (nid !== S.hoverPad || S.loupe.on) {
+    if (nid !== S.hoverPad || tid !== S.hoverTrace || S.loupe.on) {
       S.hoverPad = nid;
+      S.hoverTrace = tid;
+      cv.style.cursor = tid && (S.tool === 'pan' || S.tool === 'trace') ? 'pointer' : '';
       render();
     }
     return;
@@ -2275,8 +2504,23 @@ cv.addEventListener('pointerleave', () => {
 });
 
 cv.addEventListener('dblclick', e => {
+  const w = toWorld(e);
   if (S.tool === 'trace') { S.activeTrace = null; buildStack(); render(); return; }
-  const p = hitPad(toWorld(e));
+  // Double-clicking a trace splits it at the nearest waypoint; double-clicking
+  // a pad keeps opening the label prompt.
+  const wp = hitWaypoint(w);
+  if (wp && wp.trace.id === S.activeTrace) {
+    splitTrace(wp.trace.id, wp.i);
+    return;
+  }
+  const seg = hitTraceSegment(w);
+  if (seg) {
+    S.activeTrace = seg.trace.id;
+    buildStack(); buildLayerEditor(); render();
+    status(`trace ${seg.trace.id} selected — pick a point and press split`);
+    return;
+  }
+  const p = hitPad(w);
   if (!p) return;
   const l = prompt('Pad label:', p.label);
   if (l !== null) { p.label = l; renderTables(); render(); saveLocal(); }
@@ -2790,6 +3034,14 @@ addEventListener('keydown', e => {
     case 'Delete': case 'Backspace':
       if (pad) { e.preventDefault(); deletePad(pad.id); }
       else if (S.selectedComp != null) { e.preventDefault(); deleteComponent(S.selectedComp); }
+      else if (S.activeTrace != null) {
+        e.preventDefault();
+        S.traces = S.traces.filter(x => x.id !== S.activeTrace);
+        S.activeTrace = null;
+        buildStack(); buildLayerEditor(); render(); saveLocal();
+        histCommit('delete trace');
+        status('trace deleted');
+      }
       break;
     case 'ArrowLeft': case 'ArrowRight': case 'ArrowUp': case 'ArrowDown': {
       if (!pad) return;
@@ -2852,8 +3104,7 @@ function sessionObject(withImages = true) {
       targetPitch: S.mcu.targetPitch || null, pins: S.mcu.pins },
     links: S.links, traces: S.traces, nextTraceId: S.nextTraceId,
     components: S.components, nextCompId: S.nextCompId,
-    docs: S.docs,
-    cal: S.cal, useMm: S.useMm,
+    docs: S.docs,    cal: S.cal, useMm: S.useMm,
     view: { zoom: S.view.zoom, tx: S.view.tx, ty: S.view.ty },
     pin1: { ...S.pin1 }, guides: { ...S.guides },
   };
@@ -2990,8 +3241,7 @@ async function restoreSession(d) {
 
   S.traces = (Array.isArray(d.traces) ? d.traces : [])
     .filter(t => t && Number.isFinite(+t.id))
-    .map(t => ({
-      ...t,
+    .map(t => ({      ...t,
       id: +t.id,
       name: typeof t.name === 'string' ? t.name : 'trace ' + t.id,
       color: /^#[0-9a-f]{3,8}$/i.test(t.color || '') ? t.color : '#22d3ee',
@@ -3007,8 +3257,19 @@ async function restoreSession(d) {
         .map(Number).filter(n => Number.isFinite(n)))],
       pins: [...new Set((Array.isArray(t.pins) ? t.pins : [])
         .map(Number).filter(n => Number.isFinite(n)))],
+      showLabel: !!t.showLabel,
     }));
-  S.nextTraceId = Math.max(fin(d.nextTraceId, 0), ...S.traces.map(t => t.id), 0) + 1;
+  // Two traces sharing an id would make traceById() ambiguous and silently
+  // break editing, so keep the first and renumber any duplicates upward.
+  {
+    const seenTrace = new Set();
+    let bump = Math.max(fin(d.nextTraceId, 0), ...S.traces.map(t => t.id), 0) + 1;
+    for (const t of S.traces) {
+      if (seenTrace.has(t.id)) t.id = bump++;
+      seenTrace.add(t.id);
+    }
+    S.nextTraceId = Math.max(bump, ...S.traces.map(t => t.id), 0) + 1;
+  }
   S.activeTrace = null; S.active = 'front';
 
   // components: unknown kinds fall back to 'ic' rather than disappearing
@@ -3506,6 +3767,16 @@ new ResizeObserver(render).observe($('#stage'));
 /* ---------------------------------------------------------------- selftest */
 const near = (a, b) => Math.abs(a - b) < 1e-9;
 
+// console.assert only logs; a selftest that "passes" while printing failures is
+// worthless. This counts failures so the status line and console reflect truth.
+let selftestFailures = 0;
+function check(cond, msg, extra) {
+  if (cond) return true;
+  selftestFailures++;
+  console.assert(cond, msg, extra);
+  return false;
+}
+
 async function selftest() {
   const m = { n: 32, w: 200, h: 200, x: 0, y: 0, rot: 0 };
   const p = pinLayout(m);
@@ -3605,6 +3876,11 @@ async function selftest() {
   await selftestComponents();
   await selftestToolsTraces();
 
+  if (selftestFailures) {
+    status(`selftest FAILED — ${selftestFailures} assertion${selftestFailures === 1 ? '' : 's'} (see console)`);
+    console.error(`%cBoardExplorer selftest FAILED — ${selftestFailures} failure(s)`, 'color:#f87171');
+    return;
+  }
   status('selftest done — see console');
   console.log('%cBoardExplorer selftest passed', 'color:#22d3ee');
 }
@@ -3614,24 +3890,24 @@ async function selftestToolsTraces() {
   const keeper = sessionObject(true);
 
   // tool shortcuts map to the six tools and nothing collides
-  console.assert(TOOL_KEYMAP.h === 'pan' && TOOL_KEYMAP.p === 'pad' && TOOL_KEYMAP.v === 'via',
+  check(TOOL_KEYMAP.h === 'pan' && TOOL_KEYMAP.p === 'pad' && TOOL_KEYMAP.v === 'via',
     'tool keys H/P/V', JSON.stringify(TOOL_KEYMAP));
-  console.assert(TOOL_KEYMAP.t === 'trace' && TOOL_KEYMAP.l === 'measure' && TOOL_KEYMAP.k === 'mask',
+  check(TOOL_KEYMAP.t === 'trace' && TOOL_KEYMAP.l === 'measure' && TOOL_KEYMAP.k === 'mask',
     'tool keys T/L/K');
-  console.assert(Object.keys(TOOL_KEYMAP).length === 6, 'exactly six tool keys', Object.keys(TOOL_KEYMAP).length);
+  check(Object.keys(TOOL_KEYMAP).length === 6, 'exactly six tool keys', Object.keys(TOOL_KEYMAP).length);
   setTool('via');
-  console.assert(S.tool === 'via', 'setTool switches the tool');
-  console.assert(document.querySelector('#toolbar [data-tool=via]').classList.contains('on'),
+  check(S.tool === 'via', 'setTool switches the tool');
+  check(document.querySelector('#toolbar [data-tool=via]').classList.contains('on'),
     'setTool highlights the toolbar button');
-  console.assert(document.querySelectorAll('#toolbar [data-tool].on').length === 1, 'only one tool is active');
+  check(document.querySelectorAll('#toolbar [data-tool].on').length === 1, 'only one tool is active');
   setTool('pan');
 
   // Every toolbar button has a label and a key printed on it
   for (const btn of document.querySelectorAll('#toolbar [data-tool]')) {
     const def = TOOL_DEFS[btn.dataset.tool];
-    console.assert(!!def, 'toolbar tool has a definition: ' + btn.dataset.tool);
-    console.assert(btn.querySelector('.tl').textContent === def.label, 'button shows a label: ' + btn.dataset.tool);
-    console.assert(btn.querySelector('kbd').textContent === def.key, 'button shows its key: ' + btn.dataset.tool);
+    check(!!def, 'toolbar tool has a definition: ' + btn.dataset.tool);
+    check(btn.querySelector('.tl').textContent === def.label, 'button shows a label: ' + btn.dataset.tool);
+    check(btn.querySelector('kbd').textContent === def.key, 'button shows its key: ' + btn.dataset.tool);
   }
 
   // Ruler: the second click must PIN the far end instead of restarting.
@@ -3640,19 +3916,19 @@ async function selftestToolsTraces() {
   S.cal = null; S.tool = 'measure';
   const a = { x: 0, y: 0 }, b = { x: 100, y: 0 };
   S.measure = { a, b: { x: 3, y: 3 }, pending: true };   // anchor + rubber band
-  console.assert(S.measure.pending === true, 'anchor state is explicit');
+  check(S.measure.pending === true, 'anchor state is explicit');
   S.measure.b = b; S.measure.pending = false;           // what click 2 does
-  console.assert(!S.measure.pending, 'second click clears pending');
+  check(!S.measure.pending, 'second click clears pending');
   $('#calMm').value = '10';
   calibrateFromMeasure();
-  console.assert(S.cal && near(S.cal.mm, 10), 'calibration committed', S.cal && S.cal.mm);
-  console.assert(near(S.cal.a.x, 0) && near(S.cal.b.x, 100), 'both endpoints kept');
-  console.assert(near(pxPerMm(), 10), 'px/mm derived from the pinned line', pxPerMm());
+  check(S.cal && near(S.cal.mm, 10), 'calibration committed', S.cal && S.cal.mm);
+  check(near(S.cal.a.x, 0) && near(S.cal.b.x, 100), 'both endpoints kept');
+  check(near(pxPerMm(), 10), 'px/mm derived from the pinned line', pxPerMm());
   // a zero-length line is rejected rather than poisoning the scale
   S.cal = null;
   S.measure = { a: { x: 5, y: 5 }, b: { x: 5, y: 5 }, pending: false };
   calibrateFromMeasure();
-  console.assert(S.cal === null, 'degenerate measurement rejected');
+  check(S.cal === null, 'degenerate measurement rejected');
   S.measure = null; S.tool = 'pan'; $('#calMm').value = '';
 
   // Trace → pad / pin association
@@ -3662,45 +3938,146 @@ async function selftestToolsTraces() {
     pts: [{ x: 40, y: 40 }], pads: [], pins: [] };
   S.traces.push(t); S.activeTrace = t.id;
   attachPadToTrace(t.id, padA.id);
-  console.assert(t.pads.length === 1 && t.pads[0] === padA.id, 'pad attached to trace');
-  console.assert(t.pts.length === 1, 'no duplicate waypoint when the trace already ends on the pad', t.pts.length);
+  check(t.pads.length === 1 && t.pads[0] === padA.id, 'pad attached to trace');
+  check(t.pts.length === 1, 'no duplicate waypoint when the trace already ends on the pad', t.pts.length);
   attachPadToTrace(t.id, padB.id);
-  console.assert(t.pads.length === 2, 'second pad attached', t.pads.length);
-  console.assert(t.pts.length === 2 && near(t.pts[1].x, padB.x), 'trace extended to the newly attached pad');
+  check(t.pads.length === 2, 'second pad attached', t.pads.length);
+  check(t.pts.length === 2 && near(t.pts[1].x, padB.x), 'trace extended to the newly attached pad');
   attachPadToTrace(t.id, padB.id);
-  console.assert(t.pads.length === 2, 'attaching twice does not duplicate');
-  console.assert(t.pts.length === 2, 'attaching twice does not add a waypoint', t.pts.length);
+  check(t.pads.length === 2, 'attaching twice does not duplicate');
+  check(t.pts.length === 2, 'attaching twice does not add a waypoint', t.pts.length);
   detachPadFromTrace(t.id, padA.id);
-  console.assert(t.pads.length === 1 && t.pads[0] === padB.id, 'pad detached', t.pads.length);
+  check(t.pads.length === 1 && t.pads[0] === padB.id, 'pad detached', t.pads.length);
   // pads resolve through to the MCU pin when a link exists
   S.mcu.n = 32; ensurePins(); S.mcu.pins[4].name = 'PA3';
   S.links = S.links.filter(l => l.pad !== padB.id);
   addLink(padB.id, 5);
   const lk = linkOf(padB.id);
-  console.assert(lk && lk.pin === 5, 'pad linked to pin');
-  console.assert(S.mcu.pins[4].name === 'PA3', 'pin name available for the trace chip');
+  check(lk && lk.pin === 5, 'pad linked to pin');
+  check(S.mcu.pins[4].name === 'PA3', 'pin name available for the trace chip');
 
   // association survives a save/load round-trip; stale ids are pruned
   const snap = sessionObject(false);
   const savedTrace = snap.traces.find(x => x.id === 900);
-  console.assert(Array.isArray(savedTrace.pads) && savedTrace.pads.includes(padB.id), 'trace pads serialised');
+  check(Array.isArray(savedTrace.pads) && savedTrace.pads.includes(padB.id), 'trace pads serialised');
   const dirty = JSON.parse(JSON.stringify(snap));
   dirty.traces.find(x => x.id === 900).pads.push(99999);
   dirty.traces.find(x => x.id === 900).pins.push(200);
   await restoreSession(dirty);
   const back2 = S.traces.find(x => x.id === 900);
-  console.assert(back2 && !back2.pads.includes(99999), 'stale pad reference pruned', JSON.stringify(back2 && back2.pads));
-  console.assert(back2 && !back2.pins.includes(200), 'out-of-range pin pruned');
+  check(back2 && !back2.pads.includes(99999), 'stale pad reference pruned', JSON.stringify(back2 && back2.pads));
+  check(back2 && !back2.pins.includes(200), 'out-of-range pin pruned');
 
   // document links: no bytes, just a URL, and they never touch IndexedDB
   S.docs = [{ id: 'lnkTest', source: 'url', url: 'https://example.com/ds.pdf',
     name: 'ds.pdf', title: 'Datasheet MCU', kind: 'pdf', size: 0 }];
   const linkSnap = sessionObject(false);
-  console.assert(linkSnap.docs[0].source === 'url' && /^https:/.test(linkSnap.docs[0].url),
+  check(linkSnap.docs[0].source === 'url' && /^https:/.test(linkSnap.docs[0].url),
     'url document captured as a reference');
   await restoreSession(linkSnap);
-  console.assert(S.docs.length === 1 && S.docs[0].source === 'url', 'url document survives load');
-  console.assert(!S.docs[0].missing, 'a url document is never flagged missing');
+  check(S.docs.length === 1 && S.docs[0].source === 'url', 'url document survives load');
+  check(!S.docs[0].missing, 'a url document is never flagged missing');
+
+  // Trace editing: insert, delete, split, reverse, auto-name
+  S.traces = S.traces.filter(x => x.id !== t.id);
+  const et = { id: 901, name: 'edit me', color: '#22d3ee', side: 'front', visible: true, width: 3,
+    pts: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }], pads: [], pins: [] };
+  S.traces.push(et); S.activeTrace = et.id;
+
+  insertTracePoint(et.id, 0, { x: 50, y: 0 });
+  check(et.pts.length === 4, 'point inserted', et.pts.length);
+  check(near(et.pts[1].x, 50) && near(et.pts[1].y, 0), 'inserted at the right place');
+  check(near(et.pts[2].x, 100), 'following points keep their position');
+
+  deleteTracePoint(et.id, 1);
+  check(et.pts.length === 3, 'point deleted', et.pts.length);
+  check(near(et.pts[1].x, 100) && near(et.pts[1].y, 0), 'deleting removed the inserted point');
+
+  const beforeSplit = S.traces.length;
+  splitTrace(et.id, 1);
+  check(S.traces.length === beforeSplit + 1, 'split creates a second trace');
+  const head = traceById(et.id), tail = S.traces[S.traces.length - 1];
+  check(head.pts.length === 2 && tail.pts.length === 2, 'split divides the points',
+    head.pts.length + '/' + tail.pts.length);
+  check(near(head.pts[1].x, tail.pts[0].x) && near(head.pts[1].y, tail.pts[0].y),
+    'split shares the join point');
+  check(tail.id !== head.id && tail.id >= S.nextTraceId - 1, 'split trace gets a fresh id');
+  // split must not have collided with an existing trace
+  const idsAfterSplit = S.traces.map(t => t.id);
+  check(new Set(idsAfterSplit).size === idsAfterSplit.length,
+    'split does not duplicate an id', JSON.stringify(idsAfterSplit));
+
+  // split at an endpoint is refused rather than producing an empty trace
+  const nBeforeBad = S.traces.length;
+  splitTrace(head.id, 0);
+  splitTrace(head.id, head.pts.length - 1);
+  check(S.traces.length === nBeforeBad, 'split at an endpoint is a no-op', S.traces.length);
+
+  // reverse keeps the same two endpoints, in the opposite order
+  const endsBefore = { first: { ...head.pts[0] }, last: { ...head.pts[head.pts.length - 1] } };
+  reverseTrace(head.id);
+  check(near(head.pts[0].x, endsBefore.last.x) && near(head.pts[head.pts.length - 1].x, endsBefore.first.x),
+    'reverse swaps the endpoints', JSON.stringify(head.pts));
+  reverseTrace(head.id);
+  check(near(head.pts[0].x, endsBefore.first.x) && near(head.pts[0].y, endsBefore.first.y),
+    'reversing twice restores the start', JSON.stringify(head.pts));
+
+  // deleting the last point removes the trace entirely
+  const lonelyId = S.nextTraceId++;
+  const lonely = { id: lonelyId, name: 'lonely', color: '#f472b6', side: 'front', visible: true, width: 3,
+    pts: [{ x: 5, y: 5 }], pads: [], pins: [] };
+  S.traces.push(lonely); S.activeTrace = lonely.id;
+  deleteTracePoint(lonely.id, 0);
+  check(!traceById(lonelyId), 'trace with no points is dropped');
+  check(S.activeTrace === null, 'active trace cleared');
+
+  // auto-name builds a readable label from pad net + pin name.
+  // Re-resolve the pad and pin from live state: earlier restoreSession() calls
+  // replace S.pads, so a captured reference can be stale.
+  const livePad = S.pads.find(p => p.id === padB.id) || S.pads[S.pads.length - 1];
+  S.mcu.pins[4].name = 'PA3';
+  S.links = S.links.filter(l => l.pad !== livePad.id);
+  addLink(livePad.id, 5);
+  livePad.net = 'SIG';
+  const ntId = S.nextTraceId++;
+  const nt = { id: ntId, name: 'trace', color: '#a3e635', side: 'front', visible: true, width: 3,
+    pts: [{ x: 0, y: 0 }], pads: [livePad.id], pins: [5] };
+  S.traces.push(nt); S.activeTrace = nt.id;
+  autoNameTrace(ntId);
+  check(/SIG/.test(nt.name) && /PA3/.test(nt.name), 'auto-name uses net and pin name', nt.name);
+
+  // segment hit-testing finds the middle of a run, not just waypoints
+  const segId = S.nextTraceId++;
+  const segTrace = { id: segId, name: 'seg', color: '#22d3ee', side: 'front', visible: true, width: 3,
+    pts: [{ x: 0, y: 0 }, { x: 200, y: 0 }], pads: [], pins: [] };
+  S.traces.push(segTrace);
+  S.view.zoom = 1;
+  // clear the field so no other trace can win the hit-test
+  S.traces = S.traces.filter(x => x.id === segId);
+  const hit = hitTraceSegment({ x: 100, y: 2 });
+  check(hit && hit.trace.id === segId && hit.seg === 0, 'segment hit-test on a trace',
+    hit && hit.trace.id);
+  check(!hitTraceSegment({ x: 100, y: 400 }), 'far-away click misses the trace');
+  const selId = S.activeTrace;
+
+  // showLabel is persisted
+  segTrace.showLabel = true;
+  const lblSnap = sessionObject(false);
+  check(lblSnap.traces.some(x => x.id === segId && x.showLabel === true), 'showLabel serialised');
+
+  // A project file with duplicate trace ids must be repaired, not left
+  // ambiguous (traceById would silently edit the wrong trace). This restores,
+  // so it runs last — it replaces S.traces wholesale.
+  {
+    const dupSnap = sessionObject(false);
+    const dupTrace = { name: 'dup', color: '#22d3ee', side: 'front', visible: true, width: 3, pts: [{ x: 1, y: 1 }] };
+    const probeId = dupSnap.traces.length ? dupSnap.traces[0].id : 1;
+    dupSnap.traces.push({ ...dupTrace, id: probeId }, { ...dupTrace, id: probeId });
+    await restoreSession(dupSnap);
+    const ids = S.traces.map(t => t.id);
+    check(new Set(ids).size === ids.length, 'duplicate trace ids repaired on load', JSON.stringify(ids));
+    check(S.nextTraceId > Math.max(...ids), 'nextTraceId stays above every loaded id', S.nextTraceId);
+  }
 
   histReset();
   S.activeTrace = null; S.measure = null; S.tool = 'pan';
