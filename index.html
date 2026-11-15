@@ -49,6 +49,16 @@
     background:#11161de6;border:1px solid var(--line);border-radius:8px;padding:5px 7px;backdrop-filter:blur(6px)}
   #toolbar .sep{width:1px;height:18px;background:var(--line);margin:0 3px}
   #toolbar label{font-size:12px;color:var(--muted);display:flex;gap:4px;align-items:center}
+  #toolbar [data-tool]{display:inline-flex;align-items:center;gap:5px;padding:3px 7px 3px 6px}
+  #toolbar [data-tool] .ti{font-size:13px;line-height:1}
+  #toolbar [data-tool] .tl{font-size:12px}
+  #toolbar [data-tool] kbd{font-size:10px;line-height:12px;padding:0 3px;opacity:.85}
+  #toolbar [data-tool].on kbd{background:#04141a55;border-color:#04141a80;color:#04141a}
+  #toolbar .icon{padding:3px 6px;font-size:13px;line-height:1}
+  #toolHint{position:absolute;left:12px;top:50px;font-size:11px;color:var(--muted);
+    background:#11161de6;border:1px solid var(--line);border-radius:6px;padding:3px 8px;
+    pointer-events:none;backdrop-filter:blur(6px);max-width:min(520px,60%)}
+  @media (max-width:1240px){ #toolbar [data-tool] .tl{display:none} }
 
   /* photoshop-style layer stack */
   .lay{display:flex;align-items:center;gap:6px;padding:3px 5px;border-radius:5px;cursor:pointer;
@@ -96,6 +106,8 @@
   .docrow .kind.pdf{background:#ef444426;color:#f87171}
   .docrow .kind.img{background:#22d3ee26;color:#22d3ee}
   .docrow .kind.txt{background:#a3e63526;color:#a3e635}
+  .docrow .kind.url{background:#a78bfa26;color:#a78bfa}
+  .docrow.link input.mini{color:#c4b5fd}
   .docrow input.mini{flex:1;min-width:0;font-size:11px;padding:1px 4px}
   .docrow button{flex:0 0 auto;padding:0 5px;line-height:17px;font-size:11px;color:var(--muted)}
   .docrow.missing{opacity:.55}
@@ -103,6 +115,19 @@
   .compcard.sel{border-color:#22d3ee;box-shadow:inset 0 0 0 1px #22d3ee55}
   .compcard .row{margin:0 0 3px}
   .compcard select,.compcard input{font-size:11px;padding:1px 4px;min-width:0}
+  .chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:3px}
+  .chip{display:inline-flex;align-items:center;gap:3px;font-size:10px;
+    border:1px solid var(--line);border-radius:9px;padding:1px 3px 1px 6px;background:#0e131a}
+  .chip b{font-weight:600}
+  .chip i{font-style:normal;font-weight:600}
+  .chip button{padding:0 3px;line-height:13px;font-size:10px;border:0;background:none;color:var(--muted)}
+  .chip button:hover{color:#f87171}
+  /* shortcut reference */
+  .keys{display:grid;grid-template-columns:1fr;gap:2px;margin:0}
+  .keys div{display:flex;gap:6px;align-items:baseline;font-size:12px}
+  .keys .kk{flex:0 0 92px;text-align:right;white-space:nowrap}
+  .keys .kd{color:var(--muted);font-size:11px;line-height:1.3}
+  .keys kbd{display:inline-block;min-width:15px;text-align:center}
 </style>
 </head>
 <body>
@@ -130,12 +155,15 @@
     <section>
       <h2>Library <span class="hint" id="docCount">0 files</span></h2>
       <div class="row" style="margin-top:2px">
-        <label class="btn small">+ file<input type="file" id="docFile" multiple
+        <label class="btn small" title="store the file in this browser">+ file<input type="file" id="docFile" multiple
           accept=".pdf,.txt,.csv,.md,.json,.png,.jpg,.jpeg,.webp,.gif,.svg,application/pdf,image/*,text/*"></label>
+        <button id="docUrlBtn" class="btn small" title="keep a link to a datasheet instead of a copy">+ link</button>
+      </div>
+      <div class="row" style="margin:4px 0 0">
         <input id="docFilter" placeholder="filter" style="flex:1;min-width:0;font-size:11px;padding:1px 5px">
       </div>
       <div class="list" id="docList" style="max-height:170px"></div>
-      <p class="hint" style="margin:5px 0 0" id="docHint">Datasheets stay in this browser (IndexedDB). Attach one to a component to reference it.</p>
+      <p class="hint" style="margin:5px 0 0" id="docHint">Files are copied into this browser. Links are just a URL — no bytes stored.</p>
     </section>
 
     <section>
@@ -165,38 +193,73 @@
     </section>
 
     <section>
-      <h2>Keys</h2>
-      <p class="hint">
-        <kbd>Ctrl</kbd>+<kbd>Z</kbd> undo · <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> redo<br>
-        <kbd>S</kbd> hold = hide front · <kbd>B</kbd> hold = hide back<br>
-        <kbd>C</kbd> place component · <kbd>Z</kbd> zoom · <kbd>M</kbd> loupe · <kbd>V</kbd> toggle via<br>
-        <kbd>1</kbd> GND · <kbd>2</kbd> VCC · <kbd>3</kbd> 3V3 · <kbd>4</kbd> SIG · <kbd>5</kbd> 5V · <kbd>0</kbd> clear net<br>
-        <kbd>R</kbd>/<kbd>Shift</kbd>+<kbd>R</kbd> rotate layer ±1° · <kbd>←↑↓→</kbd> nudge · <kbd>Del</kbd> delete<br>
-        <kbd>F</kbd> fit · <kbd>Esc</kbd> deselect · <kbd>Enter</kbd> end trace · <kbd>Alt</kbd>+drag = move layer
-      </p>
+      <h2>Tools <span class="hint">single key</span></h2>
+      <div class="keys">
+        <div><span class="kk"><kbd>H</kbd></span><span class="kd">Pan — drag to scroll the photo</span></div>
+        <div><span class="kk"><kbd>P</kbd></span><span class="kd">Pad — click to drop a test pad / pin</span></div>
+        <div><span class="kk"><kbd>V</kbd></span><span class="kd">Via — through-hole: one point, both faces</span></div>
+        <div><span class="kk"><kbd>T</kbd></span><span class="kd">Trace — follow copper, snaps to pads</span></div>
+        <div><span class="kk"><kbd>L</kbd></span><span class="kd">Ruler — measure &amp; calibrate mm</span></div>
+        <div><span class="kk"><kbd>K</kbd></span><span class="kd">Mask — window over the active layer</span></div>
+      </div>
+
+      <h2>Label &amp; edit</h2>
+      <div class="keys">
+        <div><span class="kk"><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd></span><span class="kd">Net: GND · VCC · 3V3</span></div>
+        <div><span class="kk"><kbd>4</kbd><kbd>5</kbd><kbd>0</kbd></span><span class="kd">Net: SIG · 5V · clear</span></div>
+        <div><span class="kk"><kbd>Shift</kbd>+<kbd>V</kbd></span><span class="kd">Mark the selected pad as a via</span></div>
+        <div><span class="kk"><kbd>C</kbd></span><span class="kd">Place the selected component kind</span></div>
+        <div><span class="kk"><kbd>Del</kbd></span><span class="kd">Delete selected pad / component</span></div>
+        <div><span class="kk"><kbd>←↑↓→</kbd></span><span class="kd">Nudge pad (<kbd>Shift</kbd> ×10)</span></div>
+      </div>
+
+      <h2>View &amp; history</h2>
+      <div class="keys">
+        <div><span class="kk"><kbd>S</kbd> / <kbd>B</kbd></span><span class="kd">Hold: hide front / back face</span></div>
+        <div><span class="kk"><kbd>Z</kbd></span><span class="kd">Zoom to selection</span></div>
+        <div><span class="kk"><kbd>M</kbd></span><span class="kd">Precision loupe</span></div>
+        <div><span class="kk"><kbd>F</kbd></span><span class="kd">Fit the board to the window</span></div>
+        <div><span class="kk"><kbd>R</kbd> / <kbd>Shift</kbd>+<kbd>R</kbd></span><span class="kd">Rotate layer ±1°</span></div>
+        <div><span class="kk"><kbd>Ctrl</kbd>+<kbd>Z</kbd></span><span class="kd">Undo (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> redo)</span></div>
+        <div><span class="kk"><kbd>Esc</kbd></span><span class="kd">Deselect · <kbd>Enter</kbd> finish trace</span></div>
+        <div><span class="kk"><kbd>Alt</kbd>+drag</span><span class="kd">Move the active layer</span></div>
+      </div>
     </section>
   </aside>
 
   <main id="stage">
     <canvas id="cv"></canvas>
     <div id="toolbar">
-      <button data-tool="pan" class="on" title="pan / move">✋</button>
-      <button data-tool="pad" title="add pad">⊕ pad</button>
-      <button data-tool="via" title="add through-via (projects on both sides)">◎ via</button>
-      <button data-tool="trace" title="draw copper trace">⌇ trace</button>
-      <button data-tool="measure" title="measure / calibrate">↔ ruler</button>
-      <button data-tool="mask" title="drag a mask window">▢ mask</button>
+      <button data-tool="pan" class="on" title="Pan — H">
+        <span class="ti">✋</span><span class="tl">Pan</span><kbd>H</kbd>
+      </button>
+      <button data-tool="pad" title="Pad — P">
+        <span class="ti">⊕</span><span class="tl">Pad</span><kbd>P</kbd>
+      </button>
+      <button data-tool="via" title="Via — V  (a through-hole pad: one point, both faces)">
+        <span class="ti">◎</span><span class="tl">Via</span><kbd>V</kbd>
+      </button>
+      <button data-tool="trace" title="Trace — T">
+        <span class="ti">⌇</span><span class="tl">Trace</span><kbd>T</kbd>
+      </button>
+      <button data-tool="measure" title="Ruler / calibrate — L">
+        <span class="ti">↔</span><span class="tl">Ruler</span><kbd>L</kbd>
+      </button>
+      <button data-tool="mask" title="Mask — K">
+        <span class="ti">▢</span><span class="tl">Mask</span><kbd>K</kbd>
+      </button>
       <span class="sep"></span>
       <label>side
         <select id="padSide"><option value="front">front</option><option value="back">back</option></select>
       </label>
-      <button id="btnLoupe" title="precision loupe (M)" type="button">🔍</button>
+      <button id="btnLoupe" title="precision loupe (M)" type="button" class="icon">🔍</button>
       <span class="sep"></span>
-      <button id="btnUndo" title="undo (Ctrl+Z)" type="button">↶</button>
-      <button id="btnRedo" title="redo (Ctrl+Shift+Z)" type="button">↷</button>
+      <button id="btnUndo" title="undo (Ctrl+Z)" type="button" class="icon">↶</button>
+      <button id="btnRedo" title="redo (Ctrl+Shift+Z)" type="button" class="icon">↷</button>
       <span class="sep"></span>
       <span class="hint" id="coords">–</span>
     </div>
+    <div id="toolHint">drag to pan · Alt+drag moves the active layer</div>
     <div id="loupeHint">loupe ×4 — <kbd>M</kbd> to dismiss</div>
   </main>
 
@@ -1423,6 +1486,25 @@ function buildLayerEditor() {
 function buildTraceEditor(host) {
   const t = S.traces.find(t => t.id === S.activeTrace);
   if (!t) { host.innerHTML = ''; return; }
+  const padList = (t.pads || []).map(id => {
+    const p = S.pads.find(x => x.id === id);
+    if (!p) return '';
+    const link = linkOf(p.id);
+    const pin = link ? S.mcu.pins[link.pin - 1] : null;
+    const net = padNet(p);
+    return `<span class="chip" style="border-color:${p.color}66">
+      <b style="color:${p.color}">#${p.id}</b>${net ? ` <i style="color:${NET_DEFS[net]?.color || p.color}">${esc(net)}</i>` : ''}
+      ${pin ? ` <span style="color:#8b97a8">→ ${esc(pin.name || 'pin ' + link.pin)}</span>` : ''}
+      <button data-tpadrm="${p.id}" title="detach">✕</button>
+    </span>`;
+  }).join('');
+  const pinList = (t.pins || []).map(n => {
+    const pin = S.mcu.pins[n - 1];
+    return `<span class="chip">pin ${n}${pin && pin.name ? ' · ' + esc(pin.name) : ''}
+      <button data-tpinrm="${n}" title="detach">✕</button></span>`;
+  }).join('');
+  const unattached = S.pads.filter(p => !(t.pads || []).includes(p.id));
+
   host.innerHTML = `
     <div class="card">
       <div class="row" style="margin:0 0 5px">
@@ -1435,9 +1517,56 @@ function buildTraceEditor(host) {
         <label class="sl" style="flex:1;margin:0">width
           <input type="range" data-t="width" min="1" max="20" step="0.5" value="${t.width}"></label>
       </div>
-      <p class="hint" style="margin:0">⌇ trace tool: click to add waypoints, <kbd>Enter</kbd> to finish. Drag a dot to move it.</p>
+
+      <div class="sl" style="margin-top:6px">connected pads</div>
+      <div class="chips">${padList || '<span class="hint" style="margin:0">none — a trace snaps to a pad when a waypoint lands on it</span>'}</div>
+      <div class="row" style="margin:4px 0 0">
+        <select data-t-addpad style="flex:1;font-size:11px" aria-label="attach a pad to this trace">
+          <option value="">+ attach a pad…</option>
+          ${unattached.map(p => `<option value="${p.id}">#${p.id}${padNet(p) ? ' · ' + padNet(p) : ''}${p.label ? ' · ' + esc(p.label) : ''}</option>`).join('')}
+        </select>
+      </div>
+
+      ${(t.pins || []).length || pinList ? `
+        <div class="sl" style="margin-top:6px">connected MCU pins</div>
+        <div class="chips">${pinList || '<span class="hint" style="margin:0">none</span>'}</div>` : ''}
+
+      <p class="hint" style="margin:6px 0 0">click waypoints · <kbd>Enter</kbd> finish · drag a dot to move it</p>
     </div>`;
   host.querySelector('select[data-t=side]').value = t.side;
+}
+
+/* Attach/detach helpers for the trace → pad/pin association. */
+function traceById(id) { return S.traces.find(t => t.id === id) || null; }
+
+function attachPadToTrace(traceId, padId) {
+  const t = traceById(traceId), p = S.pads.find(x => x.id === padId);
+  if (!t || !p) return;
+  t.pads = t.pads || [];
+  if (!t.pads.includes(p.id)) t.pads.push(p.id);
+  // Dragging a pad onto a trace implies they're connected, so also draw the
+  // geometry: extend the trace to the pad centre.
+  const last = t.pts[t.pts.length - 1];
+  if (!last || Math.hypot(last.x - p.x, last.y - p.y) > 1) t.pts.push({ x: p.x, y: p.y });
+  buildStack(); buildLayerEditor(); renderTables(); render(); saveLocal();
+  histCommit('attach pad to trace');
+  status(`trace ${t.id} → pad #${p.id}`);
+}
+
+function detachPadFromTrace(traceId, padId) {
+  const t = traceById(traceId);
+  if (!t) return;
+  t.pads = (t.pads || []).filter(id => id !== padId);
+  buildLayerEditor(); render(); saveLocal();
+  histCommit('detach pad from trace');
+}
+
+function detachPinFromTrace(traceId, pin) {
+  const t = traceById(traceId);
+  if (!t) return;
+  t.pins = (t.pins || []).filter(n => n !== pin);
+  buildLayerEditor(); render(); saveLocal();
+  histCommit('detach pin from trace');
 }
 
 // Checkboxes and <select> report through `change`, ranges through `input`.
@@ -1486,6 +1615,11 @@ $('#layerEditor').addEventListener('input', e => {
     t[tk] = tk === 'width' ? num(e.target.value, t.width) : e.target.value;
     buildStack(); render(); saveLocal(); histSoon('trace ' + tk);
   }
+  const addPad = e.target.closest('[data-t-addpad]');
+  if (addPad && addPad.value) {
+    attachPadToTrace(S.activeTrace, +addPad.value);
+    addPad.value = '';
+  }
 });
 
 $('#layerEditor').addEventListener('change', e => {
@@ -1522,17 +1656,49 @@ $('#layerEditor').addEventListener('click', e => {
     S.traces = S.traces.filter(t => t.id !== +del);
     S.activeTrace = null; buildStack(); buildLayerEditor(); render(); saveLocal();
     histCommit('delete trace');
+    return;
   }
+  const padRm = e.target.dataset.tpadrm;
+  if (padRm) { detachPadFromTrace(S.activeTrace, +padRm); return; }
+  const pinRm = e.target.dataset.tpinrm;
+  if (pinRm) { detachPinFromTrace(S.activeTrace, +pinRm); return; }
 });
 
 /* ------------------------------------------------------------ tools / ui */
-document.querySelectorAll('#toolbar [data-tool]').forEach(b => {
-  b.addEventListener('click', () => {
-    S.tool = b.dataset.tool;
-    document.querySelectorAll('#toolbar [data-tool]').forEach(x => x.classList.toggle('on', x === b));
-    cv.style.cursor = S.tool === 'pan' ? 'grab' : (S.tool === 'pad' || S.tool === 'via') ? 'crosshair' : 'cell';
-    render();
+// One place that changes the active tool, so the toolbar, the cursor and the
+// keyboard shortcut can never disagree about which tool is live.
+const TOOL_DEFS = {
+  pan:     { key: 'H', label: 'Pan',   icon: '✋', hint: 'drag to pan · Alt+drag moves the active layer' },
+  pad:     { key: 'P', label: 'Pad',   icon: '⊕',  hint: 'click the photo to drop a pad' },
+  via:     { key: 'V', label: 'Via',   icon: '◎',  hint: 'click to drop a through-via — one net on both faces' },
+  trace:   { key: 'T', label: 'Trace', icon: '⌇',  hint: 'click waypoints · Enter to finish · snaps to pads' },
+  measure: { key: 'L', label: 'Ruler', icon: '↔',  hint: 'click both ends, type the real length' },
+  mask:    { key: 'K', label: 'Mask',  icon: '▢',  hint: 'drag a window over the active layer' },
+};
+const TOOL_KEYMAP = Object.fromEntries(
+  Object.entries(TOOL_DEFS).map(([id, d]) => [d.key.toLowerCase(), id])
+);
+
+function setTool(id, opts = {}) {
+  if (!TOOL_DEFS[id]) return;
+  S.tool = id;
+  // A half-finished measurement must not survive switching tools.
+  if (id !== 'measure' && S.measure && S.measure.pending) S.measure = null;
+  if (id !== 'trace') S.activeTrace = null;
+  document.querySelectorAll('#toolbar [data-tool]').forEach(x => {
+    const on = x.dataset.tool === id;
+    x.classList.toggle('on', on);
+    x.setAttribute('aria-pressed', on ? 'true' : 'false');
   });
+  cv.style.cursor = id === 'pan' ? 'grab' : (id === 'pad' || id === 'via') ? 'crosshair' : 'crosshair';
+  const hint = $('#toolHint');
+  if (hint) hint.textContent = TOOL_DEFS[id].hint;
+  render();
+  if (opts.announce) status(TOOL_DEFS[id].label + ' tool — ' + TOOL_DEFS[id].hint);
+}
+
+document.querySelectorAll('#toolbar [data-tool]').forEach(b => {
+  b.addEventListener('click', () => setTool(b.dataset.tool));
 });
 $('#padSide').addEventListener('change', e => S.padSide = e.target.value);
 $('#mirrorBack').addEventListener('change', e => { S.mirrorBack = e.target.checked; buildStack(); render(); saveLocal(); });
@@ -1564,7 +1730,7 @@ $('#addTrace').addEventListener('click', () => {
   const id = S.nextTraceId++;
   const PAL = ['#22d3ee', '#f472b6', '#a3e635', '#fbbf24', '#818cf8', '#fb7185', '#34d399'];
   S.traces.push({ id, name: 'trace ' + id, color: PAL[(id - 1) % PAL.length],
-    side: S.padSide, visible: true, width: 3, pts: [] });
+    side: S.padSide, visible: true, width: 3, pts: [], pads: [], pins: [] });
   S.activeTrace = id; S.active = null;
   buildStack(); buildLayerEditor(); render(); saveLocal();
 });
@@ -1904,10 +2070,20 @@ cv.addEventListener('pointerdown', e => {
   }
 
   if (S.tool === 'measure') {
-    if (!S.measure || (S.measure.a && S.measure.b)) S.measure = { a: w, b: null };
-    else S.measure.b = w;
-    drag = { type: 'measure' };
-    if (S.measure.a && S.measure.b) calibrateFromMeasure();
+    // Click 1 sets the anchor, click 2 pins the far end. The old check inferred
+    // "already anchored" from `S.measure.b`, but pointermove writes `b` on the
+    // very first drag, so the second click always looked like a fresh start and
+    // the line snapped back to zero at the exact moment it was meant to lock in.
+    if (!S.measure || !S.measure.pending) {
+      S.measure = { a: w, b: w, pending: true };
+      drag = { type: 'measure' };
+      status('anchor set — click the other end');
+      render(); return;
+    }
+    S.measure.b = w;
+    S.measure.pending = false;
+    drag = null;
+    calibrateFromMeasure();
     render(); return;
   }
 
@@ -1929,11 +2105,27 @@ cv.addEventListener('pointerdown', e => {
       const id = S.nextTraceId++;
       const PAL = ['#22d3ee', '#f472b6', '#a3e635', '#fbbf24', '#818cf8', '#fb7185', '#34d399'];
       t = { id, name: 'trace ' + id, color: PAL[(id - 1) % PAL.length], side: S.padSide,
-        visible: true, width: 3, pts: [] };
+        visible: true, width: 3, pts: [], pads: [], pins: [] };
       S.traces.push(t); S.activeTrace = id;
     }
-    t.pts.push({ x: w.x, y: w.y });
+    // A waypoint that lands on a pad or an MCU pin snaps to it and records the
+    // association, so the trace itself carries "this copper touches pad 3,
+    // which is pin 12" instead of only geometry.
+    const padHit = hitPad(w);
+    const pinHit = padHit ? null : hitPin(w);
+    let pt = { x: w.x, y: w.y };
+    if (padHit) {
+      pt = { x: padHit.x, y: padHit.y };
+      if (!t.pads.includes(padHit.id)) t.pads.push(padHit.id);
+    } else if (pinHit != null) {
+      const pw = pinWorld(pinHit);
+      if (pw) pt = { x: pw.x, y: pw.y };
+      if (!t.pins.includes(pinHit)) t.pins.push(pinHit);
+    }
+    t.pts.push(pt);
     buildStack(); buildLayerEditor(); render(); saveLocal(); histSoon('add trace point');
+    if (padHit) status(`trace ${t.id} touches pad #${padHit.id}${padNet(padHit) ? ' (' + padNet(padHit) + ')' : ''}`);
+    else if (pinHit != null) status(`trace ${t.id} touches pin ${pinHit}`);
     return;
   }
 
@@ -1978,6 +2170,13 @@ cv.addEventListener('pointermove', e => {
     : `${Math.round(w.x)}, ${Math.round(w.y)} px`;
 
   if (!drag) {
+    // Live preview for the ruler: after the anchor click the far end should
+    // follow the cursor, not wait for the second click to show anything.
+    if (S.tool === 'measure' && S.measure && S.measure.pending) {
+      S.measure.b = w;
+      render();
+      return;
+    }
     const hp = hitPad(w);
     const nid = hp ? hp.id : null;
     if (nid !== S.hoverPad || S.loupe.on) {
@@ -2049,7 +2248,9 @@ cv.addEventListener('pointermove', e => {
       if (drag.trace.pts[drag.i]) { drag.trace.pts[drag.i].x = w.x; drag.trace.pts[drag.i].y = w.y; }
       break;
     case 'measure':
-      if (S.measure && S.measure.a) S.measure.b = w;
+      // While anchored, dragging rubber-bands the far end; the second click
+      // commits it.
+      if (S.measure && S.measure.a && S.measure.pending) S.measure.b = w;
       break;
   }
   render();
@@ -2093,8 +2294,9 @@ cv.addEventListener('wheel', e => {
 function calibrateFromMeasure() {
   const m = S.measure;
   if (!m || !m.a || !m.b) return;
-  const typed = parseFloat($('#calMm').value);
   const px = dist(m.a, m.b);
+  if (px < 2) { status('measurement too short — click two distinct points'); return; }
+  const typed = parseFloat($('#calMm').value);
   const mm = Number.isFinite(typed) && typed > 0
     ? typed
     : parseFloat(prompt('Real length of that line, in mm?', (px * mmPerPx()).toFixed(2) || '45'));
@@ -2189,15 +2391,43 @@ function renderDocs() {
     host.innerHTML = `<div class="empty">${S.docs.length ? 'no match' : 'No documents yet — add a datasheet.'}</div>`;
     return;
   }
-  host.innerHTML = docs.map(d => `
-    <div class="docrow${d.missing ? ' missing' : ''}" data-doc="${d.id}">
-      <span class="kind ${d.kind}">${d.kind.toUpperCase()}</span>
+  host.innerHTML = docs.map(d => {
+    const isLink = d.source === 'url';
+    return `
+    <div class="docrow${d.missing ? ' missing' : ''}${isLink ? ' link' : ''}" data-doc="${d.id}">
+      <span class="kind ${isLink ? 'url' : d.kind}">${isLink ? 'LINK' : d.kind.toUpperCase()}</span>
       <input class="mini" data-doc="${d.id}" data-df="title" value="${esc(d.title || d.name)}"
-        placeholder="${esc(d.name)}" aria-label="document title">
-      <button data-dopen="${d.id}" title="${d.missing ? 'file bytes are not in this browser' : 'open'}">↗</button>
+        placeholder="${esc(d.name)}" title="${esc(isLink ? d.url : d.name)}" aria-label="document title">
+      <button data-dopen="${d.id}" title="${isLink ? 'open the link' : d.missing ? 'file bytes are not in this browser' : 'open'}">↗</button>
       <button data-dlink="${d.id}" title="attach to selected component">⛓</button>
       <button data-ddel="${d.id}" title="remove">✕</button>
-    </div>`).join('');
+    </div>`;
+  }).join('');
+}
+
+async function addDocLink() {
+  const input = prompt('URL of the datasheet / reference\n(e.g. https://…/nrf52840.pdf)', 'https://');
+  if (input == null) return;
+  let url;
+  try { url = new URL(String(input).trim()); } catch { status('that is not a valid URL'); return; }
+  if (!/^(https?|file):$/.test(url.protocol)) { status('only http(s) or file: links'); return; }
+  let title = prompt('Name it (e.g. "Datasheet Procesador/MCU")', url.pathname.split('/').pop() || url.hostname);
+  if (title == null) return;
+  title = String(title).trim() || url.hostname;
+  S.docs.push({
+    id: 'lnk' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
+    source: 'url',
+    url: url.href,
+    name: url.pathname.split('/').pop() || url.hostname,
+    title,
+    kind: /\.pdf($|\?)/i.test(url.pathname) ? 'pdf' : 'txt',
+    size: 0,
+    type: '',
+    added: new Date().toISOString(),
+  });
+  renderDocs(); renderComponents(); saveLocal();
+  status('linked ' + title);
+  histCommit('add document link');
 }
 
 // Project JSON carries document *metadata* only; the bytes live per-browser in
@@ -2207,13 +2437,14 @@ async function reconcileDocs() {
   const keys = new Set(await docList());
   let missing = 0;
   for (const d of S.docs) {
+    if (d.source === 'url') { d.missing = !d.url; if (d.missing) missing++; continue; }
     d.missing = !keys.has(d.id);
     if (d.missing) missing++;
   }
   if (missing) {
-    $('#docHint').textContent = `${missing} document${missing === 1 ? '' : 's'} came from the project file but the bytes aren't in this browser — re-add the file to open it.`;
+    $('#docHint').textContent = `${missing} document${missing === 1 ? '' : 's'} can't be opened here — the bytes live in the browser that added them. Re-add the file, or use a link instead.`;
   } else {
-    $('#docHint').textContent = 'Datasheets stay in this browser (IndexedDB). Attach one to a component to reference it.';
+    $('#docHint').textContent = 'Files are copied into this browser. Links are just a URL — no bytes stored.';
   }
   renderDocs();
 }
@@ -2244,6 +2475,12 @@ async function addDocs(files) {
 async function openDoc(id) {
   const meta = S.docs.find(d => d.id === id);
   if (!meta) return;
+  // A link is just a URL — never touches IndexedDB.
+  if (meta.source === 'url') {
+    if (meta.url) window.open(meta.url, '_blank', 'noopener,noreferrer');
+    else status('this link has no URL');
+    return;
+  }
   const blob = await docGet(id).catch(() => null);
   if (!blob) {
     meta.missing = true;
@@ -2265,7 +2502,8 @@ async function deleteDoc(id) {
   const meta = S.docs.find(d => d.id === id);
   S.docs = S.docs.filter(d => d.id !== id);
   for (const c of S.components) if (c.docId === id) c.docId = null;
-  await docDel(id).catch(() => {});
+  // Links have no bytes in IndexedDB; only delete a blob if we stored one.
+  if (!meta || meta.source !== 'url') await docDel(id).catch(() => {});
   renderDocs(); renderComponents(); render(); saveLocal();
   status('removed ' + (meta?.title || 'document'));
 }
@@ -2323,6 +2561,7 @@ $('#docFile').addEventListener('change', async e => {
   if (files.length) await addDocs(files);
 });
 $('#docFilter').addEventListener('input', renderDocs);
+$('#docUrlBtn').addEventListener('click', addDocLink);
 
 $('#docList').addEventListener('click', e => {
   const open = e.target.closest('[data-dopen]');
@@ -2486,6 +2725,14 @@ addEventListener('keydown', e => {
 
   const pad = S.pads.find(p => p.id === S.selectedPad);
   const step = e.shiftKey ? 10 : 1;
+
+  // Tool shortcuts: H P V T L K
+  const toolId = TOOL_KEYMAP[e.key.toLowerCase()];
+  if (toolId && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+    e.preventDefault();
+    setTool(toolId, { announce: true });
+    return;
+  }
   if (NET_KEYS[e.key]) {
     if (!pad) { status('select a pad first'); return; }
     e.preventDefault();
@@ -2514,6 +2761,7 @@ addEventListener('keydown', e => {
       setLoupe(!S.loupe.on);
       break;
     case 'v': case 'V':
+      // Shift+V is "mark this pad as a via"; plain V is the via tool (above).
       if (!pad) { status('select a pad first'); break; }
       e.preventDefault();
       toggleVia(pad);
@@ -2753,6 +3001,12 @@ async function restoreSession(d) {
       pts: (Array.isArray(t.pts) ? t.pts : [])
         .filter(p => p && Number.isFinite(+p.x) && Number.isFinite(+p.y))
         .map(p => ({ x: +p.x, y: +p.y })),
+      // pads/pins touched by this trace (v5). Resolved against the pad list
+      // below, once ids are known to be valid.
+      pads: [...new Set((Array.isArray(t.pads) ? t.pads : [])
+        .map(Number).filter(n => Number.isFinite(n)))],
+      pins: [...new Set((Array.isArray(t.pins) ? t.pins : [])
+        .map(Number).filter(n => Number.isFinite(n)))],
     }));
   S.nextTraceId = Math.max(fin(d.nextTraceId, 0), ...S.traces.map(t => t.id), 0) + 1;
   S.activeTrace = null; S.active = 'front';
@@ -2786,6 +3040,8 @@ async function restoreSession(d) {
     .filter(x => x && typeof x.id === 'string' && !seenDoc.has(x.id) && seenDoc.add(x.id))
     .map(x => ({
       id: x.id,
+      source: x.source === 'url' ? 'url' : 'file',
+      url: typeof x.url === 'string' ? x.url : '',
       name: typeof x.name === 'string' ? x.name : '',
       title: typeof x.title === 'string' ? x.title : (x.name || ''),
       kind: ['pdf', 'img', 'txt'].includes(x.kind) ? x.kind : 'txt',
@@ -2797,6 +3053,13 @@ async function restoreSession(d) {
   // dead link; keep the id but flag it in the UI instead of silently dropping.
   for (const c of S.components) {
     if (c.docId && !S.docs.some(x => x.id === c.docId)) c.docId = null;
+  }
+
+  // drop trace associations that point at pads/pins we don't have
+  const livePadIds = new Set(S.pads.map(p => p.id));
+  for (const t of S.traces) {
+    t.pads = (t.pads || []).filter(id => livePadIds.has(id));
+    t.pins = (t.pins || []).filter(n => n >= 1 && n <= S.mcu.n);
   }
 
   // calibration: keep only a usable line (two finite points + positive length)
@@ -3220,6 +3483,7 @@ renderTables();
 updateCalInfo();
 updatePitch();
 render();
+setTool(S.tool);
 histReset();
 
 new ResizeObserver(render).observe($('#stage'));
@@ -3339,14 +3603,112 @@ async function selftest() {
   await selftestPersistence();
   await selftestUndo();
   await selftestComponents();
+  await selftestToolsTraces();
 
   status('selftest done — see console');
   console.log('%cBoardExplorer selftest passed', 'color:#22d3ee');
 }
 
-/* ------------------------------------------- components / documents test */
-async function selftestComponents() {
+/* --------------------------------------------- tools, ruler and traces test */
+async function selftestToolsTraces() {
   const keeper = sessionObject(true);
+
+  // tool shortcuts map to the six tools and nothing collides
+  console.assert(TOOL_KEYMAP.h === 'pan' && TOOL_KEYMAP.p === 'pad' && TOOL_KEYMAP.v === 'via',
+    'tool keys H/P/V', JSON.stringify(TOOL_KEYMAP));
+  console.assert(TOOL_KEYMAP.t === 'trace' && TOOL_KEYMAP.l === 'measure' && TOOL_KEYMAP.k === 'mask',
+    'tool keys T/L/K');
+  console.assert(Object.keys(TOOL_KEYMAP).length === 6, 'exactly six tool keys', Object.keys(TOOL_KEYMAP).length);
+  setTool('via');
+  console.assert(S.tool === 'via', 'setTool switches the tool');
+  console.assert(document.querySelector('#toolbar [data-tool=via]').classList.contains('on'),
+    'setTool highlights the toolbar button');
+  console.assert(document.querySelectorAll('#toolbar [data-tool].on').length === 1, 'only one tool is active');
+  setTool('pan');
+
+  // Every toolbar button has a label and a key printed on it
+  for (const btn of document.querySelectorAll('#toolbar [data-tool]')) {
+    const def = TOOL_DEFS[btn.dataset.tool];
+    console.assert(!!def, 'toolbar tool has a definition: ' + btn.dataset.tool);
+    console.assert(btn.querySelector('.tl').textContent === def.label, 'button shows a label: ' + btn.dataset.tool);
+    console.assert(btn.querySelector('kbd').textContent === def.key, 'button shows its key: ' + btn.dataset.tool);
+  }
+
+  // Ruler: the second click must PIN the far end instead of restarting.
+  // Regression for the bug where pointermove wrote `b`, so the commit click was
+  // read as "no anchor yet" and the measurement collapsed.
+  S.cal = null; S.tool = 'measure';
+  const a = { x: 0, y: 0 }, b = { x: 100, y: 0 };
+  S.measure = { a, b: { x: 3, y: 3 }, pending: true };   // anchor + rubber band
+  console.assert(S.measure.pending === true, 'anchor state is explicit');
+  S.measure.b = b; S.measure.pending = false;           // what click 2 does
+  console.assert(!S.measure.pending, 'second click clears pending');
+  $('#calMm').value = '10';
+  calibrateFromMeasure();
+  console.assert(S.cal && near(S.cal.mm, 10), 'calibration committed', S.cal && S.cal.mm);
+  console.assert(near(S.cal.a.x, 0) && near(S.cal.b.x, 100), 'both endpoints kept');
+  console.assert(near(pxPerMm(), 10), 'px/mm derived from the pinned line', pxPerMm());
+  // a zero-length line is rejected rather than poisoning the scale
+  S.cal = null;
+  S.measure = { a: { x: 5, y: 5 }, b: { x: 5, y: 5 }, pending: false };
+  calibrateFromMeasure();
+  console.assert(S.cal === null, 'degenerate measurement rejected');
+  S.measure = null; S.tool = 'pan'; $('#calMm').value = '';
+
+  // Trace → pad / pin association
+  const padA = addPad({ x: 40, y: 40 }, {});
+  const padB = addPad({ x: 200, y: 40 }, {});
+  const t = { id: 900, name: 't900', color: '#22d3ee', side: 'front', visible: true, width: 3,
+    pts: [{ x: 40, y: 40 }], pads: [], pins: [] };
+  S.traces.push(t); S.activeTrace = t.id;
+  attachPadToTrace(t.id, padA.id);
+  console.assert(t.pads.length === 1 && t.pads[0] === padA.id, 'pad attached to trace');
+  console.assert(t.pts.length === 1, 'no duplicate waypoint when the trace already ends on the pad', t.pts.length);
+  attachPadToTrace(t.id, padB.id);
+  console.assert(t.pads.length === 2, 'second pad attached', t.pads.length);
+  console.assert(t.pts.length === 2 && near(t.pts[1].x, padB.x), 'trace extended to the newly attached pad');
+  attachPadToTrace(t.id, padB.id);
+  console.assert(t.pads.length === 2, 'attaching twice does not duplicate');
+  console.assert(t.pts.length === 2, 'attaching twice does not add a waypoint', t.pts.length);
+  detachPadFromTrace(t.id, padA.id);
+  console.assert(t.pads.length === 1 && t.pads[0] === padB.id, 'pad detached', t.pads.length);
+  // pads resolve through to the MCU pin when a link exists
+  S.mcu.n = 32; ensurePins(); S.mcu.pins[4].name = 'PA3';
+  S.links = S.links.filter(l => l.pad !== padB.id);
+  addLink(padB.id, 5);
+  const lk = linkOf(padB.id);
+  console.assert(lk && lk.pin === 5, 'pad linked to pin');
+  console.assert(S.mcu.pins[4].name === 'PA3', 'pin name available for the trace chip');
+
+  // association survives a save/load round-trip; stale ids are pruned
+  const snap = sessionObject(false);
+  const savedTrace = snap.traces.find(x => x.id === 900);
+  console.assert(Array.isArray(savedTrace.pads) && savedTrace.pads.includes(padB.id), 'trace pads serialised');
+  const dirty = JSON.parse(JSON.stringify(snap));
+  dirty.traces.find(x => x.id === 900).pads.push(99999);
+  dirty.traces.find(x => x.id === 900).pins.push(200);
+  await restoreSession(dirty);
+  const back2 = S.traces.find(x => x.id === 900);
+  console.assert(back2 && !back2.pads.includes(99999), 'stale pad reference pruned', JSON.stringify(back2 && back2.pads));
+  console.assert(back2 && !back2.pins.includes(200), 'out-of-range pin pruned');
+
+  // document links: no bytes, just a URL, and they never touch IndexedDB
+  S.docs = [{ id: 'lnkTest', source: 'url', url: 'https://example.com/ds.pdf',
+    name: 'ds.pdf', title: 'Datasheet MCU', kind: 'pdf', size: 0 }];
+  const linkSnap = sessionObject(false);
+  console.assert(linkSnap.docs[0].source === 'url' && /^https:/.test(linkSnap.docs[0].url),
+    'url document captured as a reference');
+  await restoreSession(linkSnap);
+  console.assert(S.docs.length === 1 && S.docs[0].source === 'url', 'url document survives load');
+  console.assert(!S.docs[0].missing, 'a url document is never flagged missing');
+
+  histReset();
+  S.activeTrace = null; S.measure = null; S.tool = 'pan';
+  await restoreSession(keeper);
+}
+
+/* ------------------------------------------- components / documents test */
+async function selftestComponents() {  const keeper = sessionObject(true);
   const nComp = S.components.length, nDocs = S.docs.length;
 
   const c = addComponent({ x: 12, y: 34 }, 'resistor');
