@@ -181,6 +181,16 @@
       </div>
       <label class="sl">scale <span data-v id="mcuScaleV">1.00</span>
         <input type="range" id="mcuScale" min="0.1" max="6" step="0.01" value="1"></label>
+      <label class="sl">rotate <span data-v id="mcuRotV">0°</span>
+        <input type="range" id="mcuRotSlider" min="-180" max="180" step="1" value="0"></label>
+      <h2 style="margin:12px 0 4px;font-size:12px">pin ring</h2>
+      <label class="sl">corner gap <span data-v id="mcuCornerV">8%</span>
+        <input type="range" id="mcuCorner" min="0" max="0.45" step="0.005" value="0.08"></label>
+      <label class="sl">pin width <span data-v id="mcuFillV">50%</span>
+        <input type="range" id="mcuFill" min="0.08" max="0.95" step="0.01" value="0.5"></label>
+      <label class="sl">pin length <span data-v id="mcuPinLenV">5%</span>
+        <input type="range" id="mcuPinLen" min="0.005" max="0.25" step="0.005" value="0.05"></label>
+      <p class="hint" id="mcuPitch" style="margin:4px 0 0">pitch —</p>
       <div class="row">
         <button id="mcuToMm" class="btn small" title="convert W to mm using the calibration">W→mm</button>
         <button id="mcuFromMm" class="btn small" title="set W from a mm value">mm→W</button>
@@ -249,7 +259,10 @@ const S = {
   mirrorBack: true,
   pads: [], nextId: 1, selectedPad: null, padSide: 'front',
   traces: [], nextTraceId: 1, activeTrace: null,
-  mcu: { name: '', n: 32, x: 0, y: 0, w: 220, h: 220, rot: 0, base: 220, pins: [] },
+  mcu: { name: '', n: 32, x: 0, y: 0, w: 220, h: 220, rot: 0, base: 220, pins: [],
+    corner: 0.08,     // fraction of each edge left empty at the corners
+    pinFill: 0.5,     // pin width as a fraction of the pitch
+    pinLen: 0.05 },   // pin length as a fraction of the package size
   links: [],
   view: { zoom: 1, tx: 0, ty: 0 },
   tool: 'pan',
@@ -380,21 +393,27 @@ function warped(L) {
 }
 
 /* --------------------------------------------------------------- pin model */
+// Pins go CCW from pin 1 (top of the left edge). `corner` trims both ends of
+// every edge, for packages whose pads stop short of the corners.
 function pinLayout(m) {
   const N = m.n | 0, out = [];
   if (N <= 0) return out;
   const { w, h } = m;
+  const c = clamp(num(m.corner, .08), 0, .45);
   if (N % 4 === 0) {
     const per = N / 4;
-    for (let i = 0; i < per; i++) out.push({ n: i + 1, x: -w / 2, y: -h / 2 + (i + .5) * h / per, side: 'left' });
-    for (let i = 0; i < per; i++) out.push({ n: per + i + 1, x: -w / 2 + (i + .5) * w / per, y: h / 2, side: 'bottom' });
-    for (let i = 0; i < per; i++) out.push({ n: 2 * per + i + 1, x: w / 2, y: h / 2 - (i + .5) * h / per, side: 'right' });
-    for (let i = 0; i < per; i++) out.push({ n: 3 * per + i + 1, x: w / 2 - (i + .5) * w / per, y: -h / 2, side: 'top' });
+    const spanY = h * (1 - 2 * c), spanX = w * (1 - 2 * c);
+    const pitchY = spanY / per, pitchX = spanX / per;
+    for (let i = 0; i < per; i++) out.push({ n: i + 1, x: -w / 2, y: -h / 2 + h * c + (i + .5) * pitchY, side: 'left', pitch: pitchY, axis: 'y' });
+    for (let i = 0; i < per; i++) out.push({ n: per + i + 1, x: -w / 2 + w * c + (i + .5) * pitchX, y: h / 2, side: 'bottom', pitch: pitchX, axis: 'x' });
+    for (let i = 0; i < per; i++) out.push({ n: 2 * per + i + 1, x: w / 2, y: h / 2 - h * c - (i + .5) * pitchY, side: 'right', pitch: pitchY, axis: 'y' });
+    for (let i = 0; i < per; i++) out.push({ n: 3 * per + i + 1, x: w / 2 - w * c - (i + .5) * pitchX, y: -h / 2, side: 'top', pitch: pitchX, axis: 'x' });
   } else {
     const r = Math.max(w, h) / 2;
+    const chord = 2 * Math.PI * r / N;
     for (let i = 0; i < N; i++) {
       const a = -Math.PI / 2 + i * 2 * Math.PI / N;
-      out.push({ n: i + 1, x: Math.cos(a) * r, y: Math.sin(a) * r, side: 'ring' });
+      out.push({ n: i + 1, x: Math.cos(a) * r, y: Math.sin(a) * r, side: 'ring', pitch: chord, axis: 'y' });
     }
   }
   return out;
@@ -578,25 +597,32 @@ function drawMcu(g) {
     if (p) linkedPins.set(l.pin, p.color);
   }
 
-  const pins = pinLayout(m), len = 13 / z, th = 7 / z;
+  const pins = pinLayout(m);
+  // pin geometry is a fraction of the package, so it stays truthful at any zoom
+  const pinLen = Math.max(1, m.pinLen * Math.min(m.w, m.h));
   g.font = `${clamp(9 / z, 6, 20)}px ui-monospace,monospace`;
   g.textAlign = 'center'; g.textBaseline = 'middle';
   for (const p of pins) {
     const col = linkedPins.get(p.n);
     g.strokeStyle = col || '#8b6b1f'; g.fillStyle = col || '#2b2313';
     g.lineWidth = 1 / z;
+    const th = Math.max(1.5, p.pitch * clamp(num(m.pinFill, .5), .08, .95));
+    const len = pinLen;
     let n, a, b;
     if (p.side === 'left' || p.side === 'right') {
       const sgn = p.side === 'left' ? -1 : 1;
       a = { x: p.x, y: p.y - th / 2 }; b = { x: p.x + sgn * len, y: p.y + th / 2 };
-      n = { x: p.x + sgn * (len + 7 / z), y: p.y };
+      n = { x: p.x + sgn * (len + 5 / z), y: p.y };
     } else if (p.side === 'top' || p.side === 'bottom') {
       const sgn = p.side === 'top' ? -1 : 1;
       a = { x: p.x - th / 2, y: p.y }; b = { x: p.x + th / 2, y: p.y + sgn * len };
-      n = { x: p.x, y: p.y + sgn * (len + 7 / z) };
+      n = { x: p.x, y: p.y + sgn * (len + 5 / z) };
     } else {
-      a = { x: p.x * 1.06, y: p.y * 1.06 }; b = { x: p.x * 1.12, y: p.y * 1.12 };
-      n = { x: p.x * 1.2, y: p.y * 1.2 };
+      // ring: draw outward along the radius
+      const ang = Math.atan2(p.y, p.x), nx = Math.cos(ang), ny = Math.sin(ang);
+      a = { x: p.x - ny * th / 2, y: p.y + nx * th / 2 };
+      b = { x: p.x + nx * len - ny * th / 2, y: p.y + ny * len + nx * th / 2 };
+      n = { x: p.x + nx * (len + 5 / z), y: p.y + ny * (len + 5 / z) };
     }
     if (col) { g.fillStyle = col + '55'; g.fillRect(a.x, a.y, b.x - a.x, b.y - a.y); }
     g.beginPath(); g.rect(a.x, a.y, b.x - a.x, b.y - a.y); g.stroke();
@@ -1167,12 +1193,39 @@ $('#mcuPkg').addEventListener('change', e => {
 });
 $('#mcuN').addEventListener('change', e => {
   S.mcu.n = clamp(num(e.target.value, 32) | 0, 1, 256);
-  $('#mcuN').value = S.mcu.n; ensurePins(); mcuSync();
+  $('#mcuN').value = S.mcu.n; ensurePins(); updatePitch(); mcuSync();
 });
 $('#mcuName').addEventListener('input', e => { S.mcu.name = e.target.value; saveLocal(); });
-$('#mcuW').addEventListener('input', e => { S.mcu.w = Math.max(2, num(e.target.value, 220)); render(); saveLocal(); });
-$('#mcuH').addEventListener('input', e => { S.mcu.h = Math.max(2, num(e.target.value, 220)); render(); saveLocal(); });
-$('#mcuRot').addEventListener('input', e => { S.mcu.rot = num(e.target.value, 0); render(); saveLocal(); });
+$('#mcuW').addEventListener('input', e => { S.mcu.w = Math.max(2, num(e.target.value, 220)); updatePitch(); render(); saveLocal(); });
+$('#mcuH').addEventListener('input', e => { S.mcu.h = Math.max(2, num(e.target.value, 220)); updatePitch(); render(); saveLocal(); });
+$('#mcuRot').addEventListener('input', e => { S.mcu.rot = num(e.target.value, 0); $('#mcuRotSlider').value = S.mcu.rot; $('#mcuRotV').textContent = Math.round(S.mcu.rot) + '°'; render(); saveLocal(); });
+$('#mcuRotSlider').addEventListener('input', e => {
+  S.mcu.rot = num(e.target.value, 0);
+  $('#mcuRot').value = Math.round(S.mcu.rot);
+  $('#mcuRotV').textContent = Math.round(S.mcu.rot) + '°';
+  render(); saveLocal();
+});
+
+// pin-ring geometry
+const bindMcu = (sel, key, outSel, fmt) => $(sel).addEventListener('input', e => {
+  S.mcu[key] = num(e.target.value, S.mcu[key]);
+  $(outSel).textContent = fmt(S.mcu[key]);
+  updatePitch(); render(); saveLocal();
+});
+bindMcu('#mcuCorner', 'corner', '#mcuCornerV', v => Math.round(v * 100) + '%');
+bindMcu('#mcuFill', 'pinFill', '#mcuFillV', v => Math.round(v * 100) + '%');
+bindMcu('#mcuPinLen', 'pinLen', '#mcuPinLenV', v => (v * 100).toFixed(1) + '%');
+
+// The number you actually need to match a datasheet: pitch in mm (or px).
+function updatePitch() {
+  const layout = pinLayout(S.mcu);
+  if (!layout.length) { $('#mcuPitch').textContent = 'pitch —'; return; }
+  const p = layout[0].pitch;
+  const per = S.mcu.n / 4;
+  const mm = mmPerPx() > 0 ? (p * mmPerPx()).toFixed(3) + ' mm' : '';
+  $('#mcuPitch').textContent =
+    `pitch ${p.toFixed(1)} px${mm ? ' = ' + mm : ''} · ${per | 0} pins/edge`;
+}
 
 // uniform scale: keeps the center, multiplies both sides
 let mcuScaleBase = null;
@@ -1187,7 +1240,7 @@ $('#mcuScale').addEventListener('input', e => {
   $('#mcuW').value = Math.round(S.mcu.w);
   $('#mcuH').value = Math.round(S.mcu.h);
   $('#mcuScaleV').textContent = f.toFixed(2);
-  render(); saveLocal();
+  updatePitch(); render(); saveLocal();
 });
 $('#mcuScale').addEventListener('change', () => { mcuScaleBase = null; $('#mcuScale').value = 1; $('#mcuScaleV').textContent = '1.00'; });
 
@@ -1315,7 +1368,7 @@ function deletePad(id) {
 }
 
 cv.addEventListener('pointerdown', e => {
-  cv.setPointerCapture(e.pointerId);
+  try { cv.setPointerCapture(e.pointerId); } catch { /* synthetic events have no active pointer */ }
   const w = toWorld(e);
 
   if (e.altKey) {
@@ -1422,6 +1475,8 @@ cv.addEventListener('pointermove', e => {
     case 'mcu-rot':
       S.mcu.rot = Math.round(Math.atan2(w.y - S.mcu.y, w.x - S.mcu.x) * 180 / Math.PI + 90);
       $('#mcuRot').value = S.mcu.rot;
+      $('#mcuRotSlider').value = S.mcu.rot;
+      $('#mcuRotV').textContent = S.mcu.rot + '°';
       break;
     case 'mcu-resize': {
       const l = mcuLocal(w);
@@ -1489,7 +1544,7 @@ function calibrateFromMeasure() {
     : parseFloat(prompt('Real length of that line, in mm?', (px * mmPerPx()).toFixed(2) || '45'));
   if (!Number.isFinite(mm) || mm <= 0) { status('measurement dropped — no length given'); return; }
   S.cal = { a: m.a, b: m.b, mm };
-  updateCalInfo();
+  updateCalInfo(); updatePitch();
   status(`${px.toFixed(1)} px = ${mm} mm  →  ${(px / mm).toFixed(3)} px/mm`);
   saveLocal();
 }
@@ -1666,7 +1721,8 @@ function sessionObject(withImages = true) {
     app: 'BoardExplorer', version: 2, savedAt: new Date().toISOString(), project: S.project,
     mirrorBack: S.mirrorBack, layers, pads: S.pads, nextId: S.nextId,
     mcu: { name: S.mcu.name, n: S.mcu.n, x: S.mcu.x, y: S.mcu.y, w: S.mcu.w, h: S.mcu.h,
-      rot: S.mcu.rot, pins: S.mcu.pins },
+      rot: S.mcu.rot, corner: S.mcu.corner, pinFill: S.mcu.pinFill, pinLen: S.mcu.pinLen,
+      pins: S.mcu.pins },
     links: S.links, traces: S.traces, nextTraceId: S.nextTraceId,
     cal: S.cal, useMm: S.useMm,
     view: S.view, pin1: S.pin1, guides: S.guides,
@@ -1680,7 +1736,7 @@ async function restoreSession(d) {
   S.pads = d.pads || [];
   S.nextId = d.nextId || (Math.max(0, ...S.pads.map(p => p.id)) + 1);
   S.links = d.links || []; S.selectedPad = null;
-  Object.assign(S.mcu, d.mcu || {}); ensurePins();
+  Object.assign(S.mcu, { corner: .08, pinFill: .5, pinLen: .05 }, d.mcu || {}); ensurePins();
   S.traces = d.traces || [];
   S.nextTraceId = d.nextTraceId || (Math.max(0, ...S.traces.map(t => t.id)) + 1);
   S.activeTrace = null;
@@ -1703,7 +1759,7 @@ async function restoreSession(d) {
     if (src.src) await setLayerSrc(id, src.src, src.name);
   }
   Object.assign(S.view, d.view || {});
-  refreshUi(); updateCalInfo(); render();
+  refreshUi(); updateCalInfo(); updatePitch(); render();
 }
 
 function refreshUi() {
@@ -1716,6 +1772,14 @@ function refreshUi() {
   $('#mcuName').value = S.mcu.name; $('#mcuN').value = S.mcu.n;
   $('#mcuW').value = Math.round(S.mcu.w); $('#mcuH').value = Math.round(S.mcu.h);
   $('#mcuRot').value = S.mcu.rot;
+  $('#mcuRotSlider').value = S.mcu.rot;
+  $('#mcuRotV').textContent = Math.round(S.mcu.rot) + '°';
+  $('#mcuCorner').value = S.mcu.corner;
+  $('#mcuFill').value = S.mcu.pinFill;
+  $('#mcuPinLen').value = S.mcu.pinLen;
+  $('#mcuCornerV').textContent = Math.round(S.mcu.corner * 100) + '%';
+  $('#mcuFillV').textContent = Math.round(S.mcu.pinFill * 100) + '%';
+  $('#mcuPinLenV').textContent = (S.mcu.pinLen * 100).toFixed(1) + '%';
   buildStack(); buildLayerEditor();
   renderTables();
 }
@@ -1781,6 +1845,7 @@ buildStack();
 buildLayerEditor();
 renderTables();
 updateCalInfo();
+updatePitch();
 render();
 
 new ResizeObserver(render).observe($('#stage'));
@@ -1804,6 +1869,23 @@ function selftest() {
   console.assert(p[31].n === 32 && p[31].side === 'top', 'pin 32 after one CCW lap');
   const ring = pinLayout({ ...m, n: 30 });
   console.assert(ring.length === 30 && ring[0].side === 'ring', 'ring fallback for N%4');
+
+  // corner gap: no pin may sit inside the trimmed corner region, and pins stay ordered
+  const gapped = pinLayout({ ...m, corner: .1 });
+  const cg = 100 * .1;
+  console.assert(gapped.every(q => q.side === 'ring' ||
+    (q.side !== 'left' && q.side !== 'right' ? true : Math.abs(q.y) <= 100 - cg + 1e-9) &&
+    (q.side !== 'top' && q.side !== 'bottom' ? true : Math.abs(q.x) <= 100 - cg + 1e-9)),
+    'no pin falls inside the corner gap');
+  console.assert(gapped.length === 32 && Math.abs(gapped[7].y - (-100 + 200 * .1 + 7.5 * (200 * (1 - 2 * .1)) / 8)) < 1e-6,
+    'pins distribute across the trimmed span');
+  console.assert(gapped.every(q => q.pitch > 0), 'every pin reports a pitch');
+  const noGap = pinLayout({ ...m, corner: 0 });
+  console.assert(Math.abs(noGap[0].y - (-100 + .5 * 200 / 8)) < 1e-9, 'corner=0 reproduces the full-edge layout');
+  // a bigger corner gap must widen the spacing between pin centers? no — it tightens it
+  const wide = pinLayout({ ...m, corner: .2 });
+  console.assert(wide[0].pitch < gapped[0].pitch, 'more corner gap → smaller pitch');
+
   const r = xf({ ...m, rot: 90 }, { x: 10, y: 0 });
   console.assert(Math.abs(r.x) < 1e-6 && Math.abs(r.y - 10) < 1e-6, 'rotation math');
 
