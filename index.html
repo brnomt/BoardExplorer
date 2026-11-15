@@ -212,7 +212,7 @@
         <div><span class="kk"><kbd>Shift</kbd>+<kbd>V</kbd></span><span class="kd">Mark the selected pad as a via</span></div>
         <div><span class="kk"><kbd>C</kbd></span><span class="kd">Place the selected component kind</span></div>
         <div><span class="kk"><kbd>[</kbd> <kbd>]</kbd></span><span class="kd">Resize component (<kbd>Shift</kbd> rotates)</span></div>
-        <div><span class="kk"><kbd>Del</kbd></span><span class="kd">Delete selected pad / component</span></div>
+        <div><span class="kk"><kbd>Del</kbd></span><span class="kd">Delete picked trace point / pad / component</span></div>
         <div><span class="kk"><kbd>←↑↓→</kbd></span><span class="kd">Nudge pad (<kbd>Shift</kbd> ×10)</span></div>
       </div>
 
@@ -225,7 +225,7 @@
         <div><span class="kk"><kbd>R</kbd> / <kbd>Shift</kbd>+<kbd>R</kbd></span><span class="kd">Rotate layer ±1°</span></div>
         <div><span class="kk"><kbd>Ctrl</kbd>+<kbd>Z</kbd></span><span class="kd">Undo (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> redo)</span></div>
         <div><span class="kk"><kbd>Esc</kbd></span><span class="kd">Deselect · <kbd>Enter</kbd> finish trace</span></div>
-        <div><span class="kk"><kbd>Alt</kbd>+drag</span><span class="kd">Move the active layer</span></div>
+        <div><span class="kk"><kbd>Alt</kbd>+drag</span><span class="kd">Move the active layer · moves a trace point</span></div>
       </div>
     </section>
   </aside>
@@ -434,6 +434,7 @@ const S = {
   components: [], nextCompId: 1, selectedComp: null,
   docs: [],               // metadata only; bytes live in IndexedDB
   traces: [], nextTraceId: 1, activeTrace: null, hoverTrace: null,
+  selectedTracePoint: null,   // { trace, i } — the waypoint a click last picked
   mcu: { name: '', n: 32, x: 0, y: 0, w: 220, h: 220, rot: 0, base: 220, pins: [],
     corner: 0.08,     // fraction of each edge left empty at the corners
     pinFill: 0.5,     // pin width as a fraction of the pitch
@@ -818,13 +819,20 @@ function drawTraces(g) {
 
     // waypoints: bigger and ringed while the trace is being edited
     const r = (isActive ? 4.4 : 3.2) / z;
-    for (const p of t.pts) {
-      g.beginPath(); g.arc(p.x, p.y, r, 0, 7);
-      g.fillStyle = t.color; g.fill();
-      if (isActive) {
-        g.strokeStyle = '#0a0e13'; g.lineWidth = 1.4 / z; g.stroke();
+    t.pts.forEach((p, i) => {
+      const picked = S.selectedTracePoint
+        && S.selectedTracePoint.trace === t.id && S.selectedTracePoint.i === i;
+      if (picked) {
+        g.beginPath(); g.arc(p.x, p.y, r * 2.1, 0, 7);
+        g.fillStyle = '#ffffff33'; g.fill();
       }
-    }
+      g.beginPath(); g.arc(p.x, p.y, picked ? r * 1.35 : r, 0, 7);
+      g.fillStyle = picked ? '#ffffff' : t.color; g.fill();
+      if (isActive || picked) {
+        g.strokeStyle = picked ? t.color : '#0a0e13';
+        g.lineWidth = 1.4 / z; g.stroke();
+      }
+    });
 
     // Endpoint pads/pins touched by the copper, drawn as small squares so a
     // trace reads as "from this pad to that pin" and not just a wandering line.
@@ -1768,8 +1776,9 @@ function buildTraceEditor(host) {  const t = S.traces.find(t => t.id === S.activ
 
       <p class="hint" style="margin:6px 0 0">
         <b>${t.pts.length}</b> point${t.pts.length === 1 ? '' : 's'} ·
-        click a trace to select · <kbd>Alt</kbd>+click a line = add point · <kbd>Alt</kbd>+click a dot = remove ·
-        double-click = split · <kbd>Del</kbd> deletes
+        click a point to pick it · <kbd>Del</kbd> removes the picked point ·
+        <kbd>Alt</kbd>+drag moves it · <kbd>Alt</kbd>+click a line adds one ·
+        double-click = split
       </p>
     </div>`;
   host.querySelector('select[data-t=side]').value = t.side;
@@ -2261,6 +2270,7 @@ function insertTracePoint(traceId, seg, w) {
   if (!t || seg == null) return;
   ensureTraceShape(t);
   t.pts.splice(seg + 1, 0, { x: w.x, y: w.y });
+  S.selectedTracePoint = null;   // indices shifted
   buildStack(); buildLayerEditor(); render(); saveLocal();
   histCommit('insert trace point');
   status(`trace ${t.id}: point inserted`);
@@ -2315,6 +2325,7 @@ function deleteTracePoint(traceId, index) {
   if (!t) return;
   ensureTraceShape(t);
   t.pts.splice(index, 1);
+  S.selectedTracePoint = null;   // indices shifted
   // A trace with no geometry left is not worth keeping around.
   if (!t.pts.length) {
     S.traces = S.traces.filter(x => x.id !== t.id);
@@ -2657,15 +2668,17 @@ cv.addEventListener('pointerdown', e => {
     }
   }
 
-  // Vector-editor convention, checked before any tool branch so it works with
-  // the Trace tool active too: Alt+click a dot removes it, Alt+click a segment
-  // inserts a point.
+  // Vector-editor convention, resolved before any tool branch so it works with
+  // the Trace tool active too: Alt+drag moves a waypoint, Alt+click on a segment
+  // inserts one. Deleting is plain click + Del, so a stray Alt tap can't destroy
+  // a point you meant to nudge.
   if (e.altKey) {
     const wpHit = hitWaypoint(w);
     if (wpHit) {
       S.activeTrace = wpHit.trace.id;
-      deleteTracePoint(wpHit.trace.id, wpHit.i);
-      buildStack(); buildLayerEditor(); render();
+      S.selectedTracePoint = { trace: wpHit.trace.id, i: wpHit.i };
+      drag = { type: 'wpt', trace: wpHit.trace, i: wpHit.i };
+      buildLayerEditor(); render();
       return;
     }
     const segAlt = hitTraceSegment(w);
@@ -2722,6 +2735,27 @@ cv.addEventListener('pointerdown', e => {
     return;
   }
 
+  // Clicking a waypoint picks it so Del can remove exactly that point; clicking
+  // a trace body selects the trace. Both resolve before the tool branches —
+  // with the Trace tool active, that branch would otherwise append a new
+  // waypoint instead of picking the one under the cursor.
+  const wpSel = hitWaypoint(w);
+  if (wpSel) {
+    S.activeTrace = wpSel.trace.id;
+    S.selectedTracePoint = { trace: wpSel.trace.id, i: wpSel.i };
+    buildStack(); buildLayerEditor(); render();
+    status(`trace ${wpSel.trace.id} · point ${wpSel.i + 1} selected — Del removes it, Alt+drag moves it`);
+    return;
+  }
+  const segSel = hitTraceSegment(w);
+  if (segSel) {
+    S.activeTrace = segSel.trace.id; S.active = null;
+    S.selectedTracePoint = null;
+    buildStack(); buildLayerEditor(); render();
+    status(`trace ${segSel.trace.id} · ${segSel.trace.name || 'unnamed'}`);
+    return;
+  }
+
   if (S.tool === 'trace') {
     const wp = hitWaypoint(w);
     if (wp) { S.activeTrace = wp.trace.id; drag = { type: 'wpt', trace: wp.trace, i: wp.i }; return; }
@@ -2763,27 +2797,6 @@ cv.addEventListener('pointerdown', e => {
     S.selectedPad = pad.id;
     drag = { type: 'pad', id: pad.id, dx: w.x - pad.x, dy: w.y - pad.y };
     renderTables(); render(); return;
-  }
-  // Clicking a trace (not a waypoint) selects it and reveals its name. Alt+click
-  // on a segment inserts a new point right there, and Alt+click on an existing
-  // point removes it — the usual vector-editor convention.
-  const segHit = hitTraceSegment(w);
-  if (segHit) {
-    S.activeTrace = segHit.trace.id; S.active = null;
-    const wpHit = hitWaypoint(w);
-    if (e.altKey && wpHit && wpHit.trace.id === segHit.trace.id) {
-      deleteTracePoint(wpHit.trace.id, wpHit.i);
-      buildStack(); buildLayerEditor(); render();
-      return;
-    }
-    if (e.altKey) {
-      insertTracePoint(segHit.trace.id, segHit.seg, { x: segHit.x, y: segHit.y });
-      buildStack(); buildLayerEditor(); render();
-      return;
-    }
-    buildStack(); buildLayerEditor(); render();
-    status(`trace ${segHit.trace.id} · ${segHit.trace.name || 'unnamed'}`);
-    return;
   }
   if (S.guides.pin1 && S.pin1.on && Math.hypot(w.x - S.pin1.x, w.y - S.pin1.y) < 16 / S.view.zoom) {
     drag = { type: 'pin1', dx: w.x - S.pin1.x, dy: w.y - S.pin1.y }; return;
@@ -3557,12 +3570,25 @@ addEventListener('keydown', e => {
     case 'Enter': S.activeTrace = null; buildStack(); buildLayerEditor(); render(); break;
     case 'Escape':
       S.selectedPad = null; S.selectedComp = null; S.persist = null; S.activeTrace = null;
+      S.selectedTracePoint = null;
       if (S.loupe.on) setLoupe(false);
       buildStack(); buildLayerEditor(); renderTables(); render(); break;
-    case 'Delete': case 'Backspace':
-      if (pad) { e.preventDefault(); deletePad(pad.id); }
-      else if (S.selectedComp != null) { e.preventDefault(); deleteComponent(S.selectedComp); }
-      else if (S.activeTrace != null) {
+    case 'Delete': case 'Backspace': {
+      // Priority: a picked trace point, then a pad, then a component, then the
+      // whole trace. Deleting a point is the most common intent once you've
+      // clicked one, and the least destructive of the four.
+      const sp = S.selectedTracePoint;
+      if (sp && traceById(sp.trace) && traceById(sp.trace).pts[sp.i]) {
+        e.preventDefault();
+        const tid = sp.trace, idx = sp.i;
+        S.selectedTracePoint = null;
+        deleteTracePoint(tid, idx);
+        buildStack(); buildLayerEditor(); render();
+        break;
+      }
+      if (pad) { e.preventDefault(); deletePad(pad.id); break; }
+      if (S.selectedComp != null) { e.preventDefault(); deleteComponent(S.selectedComp); break; }
+      if (S.activeTrace != null) {
         e.preventDefault();
         S.traces = S.traces.filter(x => x.id !== S.activeTrace);
         S.activeTrace = null;
@@ -3571,7 +3597,24 @@ addEventListener('keydown', e => {
         status('trace deleted');
       }
       break;
+    }
     case 'ArrowLeft': case 'ArrowRight': case 'ArrowUp': case 'ArrowDown': {
+      // A picked trace point takes precedence over pad nudging: the point is
+      // what you just clicked, and sub-pixel placement matters for copper.
+      const spA = S.selectedTracePoint;
+      if (spA) {
+        const t = traceById(spA.trace);
+        const pt = t && t.pts[spA.i];
+        if (pt) {
+          e.preventDefault();
+          if (e.key === 'ArrowLeft') pt.x -= step;
+          if (e.key === 'ArrowRight') pt.x += step;
+          if (e.key === 'ArrowUp') pt.y -= step;
+          if (e.key === 'ArrowDown') pt.y += step;
+          render(); saveLocal(); histSoon('nudge trace point');
+          break;
+        }
+      }
       if (!pad) return;
       e.preventDefault();
       if (e.key === 'ArrowLeft') pad.x -= step;
@@ -4890,6 +4933,34 @@ async function selftestToolsTraces() {
   rebindTraceEnds(tDrag);
   check(tDrag.pads.includes(lp.id), 'endpoint dragged onto a pad records the pad', JSON.stringify(tDrag.pads));
   check(new Set(tDrag.pads).size === tDrag.pads.length, 'rebind does not duplicate pads');
+
+  // --- point picking: click selects, Del deletes, Alt+drag moves ------------
+  const tPick = { id: S.nextTraceId++, name: 'pick', color: '#f472b6', side: 'front',
+    visible: true, width: 3, pts: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 200, y: 0 }],
+    pads: [], pins: [] };
+  S.traces.push(tPick);
+  S.activeTrace = tPick.id;
+
+  // picking a point and deleting removes exactly that one
+  S.selectedTracePoint = { trace: tPick.id, i: 1 };
+  deleteTracePoint(tPick.id, 1);
+  check(tPick.pts.length === 2, 'picked point deleted', tPick.pts.length);
+  check(near2(tPick.pts[1].x, 200), 'the right point was removed', tPick.pts[1].x);
+  check(S.selectedTracePoint === null, 'selection cleared after deletion (indices shift)');
+
+  // inserting clears the selection too, for the same reason
+  S.selectedTracePoint = { trace: tPick.id, i: 0 };
+  insertTracePoint(tPick.id, 0, { x: 50, y: 0 });
+  check(S.selectedTracePoint === null, 'selection cleared after insertion');
+
+  // a stale index must not delete the wrong point
+  S.selectedTracePoint = { trace: tPick.id, i: 99 };
+  const live = traceById(tPick.id);
+  const stillValid = !!(S.selectedTracePoint && live.pts[S.selectedTracePoint.i]);
+  check(stillValid === false, 'out-of-range pick is ignored, not clamped');
+
+  S.selectedTracePoint = null;
+  S.traces = S.traces.filter(t => t.id !== tPick.id);
 
   S.traces = S.traces.filter(t => ![tEv.id, tHidden.id, tDrag.id].includes(t.id));
   S.links = S.links.filter(l => l.pad !== lp.id);
