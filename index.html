@@ -1962,9 +1962,10 @@ function buildTraceEditor(host) {  const t = S.traces.find(t => t.id === S.activ
   const padList = (t.pads || []).map(id => {
     const p = S.pads.find(x => x.id === id);
     if (!p) return '';
+    const net = padNet(p);
+    // A pad may be linked to one MCU pin; show it so the chip reads as a chain.
     const link = linkOf(p.id);
     const pin = link ? S.mcu.pins[link.pin - 1] : null;
-    const net = padNet(p);
     return `<span class="chip" style="border-color:${p.color}66">
       <b style="color:${p.color}">#${p.id}</b>${net ? ` <i style="color:${NET_DEFS[net]?.color || p.color}">${esc(net)}</i>` : ''}
       ${pin ? ` <span style="color:#8b97a8">→ ${esc(pin.name || 'pin ' + link.pin)}</span>` : ''}
@@ -1977,6 +1978,13 @@ function buildTraceEditor(host) {  const t = S.traces.find(t => t.id === S.activ
       <button data-tpinrm="${n}" title="detach">✕</button></span>`;
   }).join('');
   const unattached = S.pads.filter(p => !(t.pads || []).includes(p.id));
+  const unattachedPins = Array.from({ length: S.mcu.n }, (_, i) => i + 1)
+    .filter(n => !(t.pins || []).includes(n));
+  const pinOpt = n => {
+    const pin = S.mcu.pins[n - 1];
+    const nm = pin && pin.name ? ' · ' + pin.name : '';
+    return `<option value="${n}">pin ${n}${nm}</option>`;
+  };
 
   host.innerHTML = `
     <div class="card">
@@ -2000,9 +2008,14 @@ function buildTraceEditor(host) {  const t = S.traces.find(t => t.id === S.activ
         </select>
       </div>
 
-      ${(t.pins || []).length || pinList ? `
-        <div class="sl" style="margin-top:6px">connected MCU pins</div>
-        <div class="chips">${pinList || '<span class="hint" style="margin:0">none</span>'}</div>` : ''}
+      <div class="sl" style="margin-top:6px">connected MCU pins</div>
+      <div class="chips">${pinList || '<span class="hint" style="margin:0">none — click a trace waypoint on a pin, or pick one below</span>'}</div>
+      <div class="row" style="margin:4px 0 0">
+        <select data-t-addpin style="flex:1;font-size:11px" aria-label="attach an MCU pin to this trace">
+          <option value="">+ attach a pin…</option>
+          ${unattachedPins.map(pinOpt).join('')}
+        </select>
+      </div>
 
       <div class="sl" style="margin-top:8px">edit</div>
       <div class="row" style="margin:0 0 4px">
@@ -2063,6 +2076,23 @@ function detachPinFromTrace(traceId, pin) {
   t.pins = (t.pins || []).filter(n => n !== pin);
   buildLayerEditor(); render(); saveLocal();
   histCommit('detach pin from trace');
+}
+
+// A trace may touch many things: several pads AND several MCU pins. This adds a
+// pin by number without moving any geometry — useful when the copper runs under
+// the package and the endpoint never lands exactly on the pin tick.
+function attachPinToTrace(traceId, pin) {
+  const t = traceById(traceId);
+  if (!t) return;
+  pin = +pin;
+  if (!(pin >= 1 && pin <= S.mcu.n)) { status('pin out of range'); return; }
+  t.pins = t.pins || [];
+  if (t.pins.includes(pin)) { status(`pin ${pin} is already on this trace`); return; }
+  t.pins.push(pin);
+  buildLayerEditor(); render(); saveLocal();
+  histCommit('attach pin to trace');
+  const p = S.mcu.pins[pin - 1];
+  status(`trace ${t.id} → pin ${pin}${p && p.name ? ' (' + p.name + ')' : ''}`);
 }
 
 // Checkboxes and <select> report through `change`, ranges through `input`.
@@ -2126,6 +2156,11 @@ $('#layerEditor').addEventListener('input', e => {
   if (addPad && addPad.value) {
     attachPadToTrace(S.activeTrace, +addPad.value);
     addPad.value = '';
+  }
+  const addPin = e.target.closest('[data-t-addpin]');
+  if (addPin && addPin.value) {
+    attachPinToTrace(S.activeTrace, +addPin.value);
+    addPin.value = '';
   }
 });
 
@@ -5091,6 +5126,7 @@ async function selftest() {
   await selftestFpc();
   await selftestCompTransform();
   await selftestPinLinks();
+  await selftestMultiTraceLinks();
 
   if (selftestFailures) {
     status(`selftest FAILED — ${selftestFailures} assertion${selftestFailures === 1 ? '' : 's'} (see console)`);
@@ -5504,6 +5540,69 @@ async function selftestAlign() {
 }
 
 const near2 = (a, b, tol = 1e-6) => Math.abs(a - b) < tol;
+
+/* ------------------------------ many associations on one trace test */
+async function selftestMultiTraceLinks() {
+  const keeper = sessionObject(true);
+  S.mcu.n = 32; S.mcu.pins = []; ensurePins();
+  S.mcu.pins[0].name = 'P1';
+  S.mcu.pins[1].name = 'P2';
+  S.pads = []; S.nextId = 1; S.links = []; S.traces = []; S.nextTraceId = 1;
+
+  const padA = addPad({ x: 10, y: 10 }, { silent: true });
+  const padB = addPad({ x: 20, y: 20 }, { silent: true });
+  const t = { id: S.nextTraceId++, name: 'multi', color: '#22d3ee', side: 'front',
+    visible: true, width: 3, pts: [{ x: 0, y: 0 }], pads: [], pins: [] };
+  S.traces.push(t); S.activeTrace = t.id;
+
+  // two pads and two pins on the SAME trace
+  attachPadToTrace(t.id, padA.id);
+  attachPadToTrace(t.id, padB.id);
+  attachPinToTrace(t.id, 1);
+  attachPinToTrace(t.id, 2);
+
+  check(t.pads.length === 2, 'two pads on one trace', JSON.stringify(t.pads));
+  check(t.pins.length === 2, 'two pins on one trace', JSON.stringify(t.pins));
+  check(t.pads.includes(padA.id) && t.pads.includes(padB.id), 'both pad ids recorded');
+  check(t.pins.includes(1) && t.pins.includes(2), 'both pin numbers recorded');
+  // geometry must only grow for pads, not for pins added by number
+  check(t.pts.length === 3, 'two pads added two waypoints', t.pts.length);
+
+  // duplicates refused, range checked
+  attachPinToTrace(t.id, 2);
+  check(t.pins.length === 2, 're-adding a pin does not duplicate', t.pins.length);
+  attachPinToTrace(t.id, 99);
+  check(!t.pins.includes(99), 'out-of-range pin refused');
+
+  // detaching is independent per pin
+  detachPinFromTrace(t.id, 1);
+  check(t.pins.length === 1 && t.pins[0] === 2, 'one pin detached, the other kept', JSON.stringify(t.pins));
+  detachPadFromTrace(t.id, padA.id);
+  check(t.pads.length === 1 && t.pads[0] === padB.id, 'one pad detached, the other kept');
+
+  // a trace touching pad→pin and pin→pin must suppress every covered link
+  S.links = [{ pad: padB.id, pin: 2, note: 'unknown' }];
+  const pinPt2 = pinWorld(2);
+  check(traceEvidencesLink(padB.id, 2, pinPt2) === true, 'trace still evidences the pad→pin link');
+
+  // everything survives a save/load with the full set intact
+  attachPinToTrace(t.id, 1);
+  const snap = sessionObject(false);
+  const saved = snap.traces.find(x => x.id === t.id);
+  check(saved.pads.length === 1 && saved.pins.length === 2, 'payload keeps both kinds',
+    JSON.stringify({ pads: saved.pads, pins: saved.pins }));
+  await restoreSession(snap);
+  const back = S.traces.find(x => x.id === t.id);
+  check(back.pads.length === 1 && back.pins.length === 2, 'both kinds survive load',
+    JSON.stringify({ pads: back.pads, pins: back.pins }));
+
+  // auto-name copes with several of each
+  autoNameTrace(t.id);
+  check(/P1|pin 1/.test(back.name), 'auto-name includes pin names', back.name);
+
+  histReset();
+  await restoreSession(keeper);
+}
 
 /* ------------------------------------------------- pin ↔ pin link test */
 async function selftestPinLinks() {
