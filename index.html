@@ -201,6 +201,7 @@
         <div><span class="kk"><kbd>T</kbd></span><span class="kd">Trace — follow copper, snaps to pads</span></div>
         <div><span class="kk"><kbd>L</kbd></span><span class="kd">Ruler — measure &amp; calibrate mm</span></div>
         <div><span class="kk"><kbd>K</kbd></span><span class="kd">Mask — window over the active layer</span></div>
+        <div><span class="kk"><kbd>A</kbd></span><span class="kd">Align — click matching holes on both faces</span></div>
       </div>
 
       <h2>Label &amp; edit</h2>
@@ -247,6 +248,9 @@
       </button>
       <button data-tool="mask" title="Mask — K">
         <span class="ti">▢</span><span class="tl">Mask</span><kbd>K</kbd>
+      </button>
+      <button data-tool="align" title="Align photos — A">
+        <span class="ti">✛</span><span class="tl">Align</span><kbd>A</kbd>
       </button>
       <span class="sep"></span>
       <label>side
@@ -411,6 +415,9 @@ const S = {
   persist: null,          // {a,b} corners while editing a perspective
   maskEdit: null,         // {layer, ax, ay} while dragging a mask
   measure: null,          // {a,b} in progress or last measurement
+  // Photo registration: pairs of homologous points (a = reference face,
+  // b = the face being moved). `phase` tracks which face is being clicked.
+  align: { active: false, phase: 'first', ref: 'front', move: 'back', pairs: [], last: null },
   cal: null,              // {a,b,mm}
   useMm: false,
 };
@@ -1174,6 +1181,7 @@ function paint(g, W, H, dpr, z, tx, ty, guides) {
     g.save();
     g.setTransform(dpr * z, 0, 0, dpr * z, dpr * tx, dpr * ty);
     drawHandles(g);
+    if (S.align.active) drawAlignOverlay(g);
     g.restore();
   }
   if (guides && S.guides.rulers) drawRulers(g, W, H, view);
@@ -1483,6 +1491,7 @@ $('#layerStack').addEventListener('click', e => {
 /* --------------------------------------------------------- layer editor UI */
 function buildLayerEditor() {
   const host = $('#layerEditor');
+  if (S.tool === 'align') return buildAlignEditor(host);
   if (S.activeTrace != null) return buildTraceEditor(host);
   const L = S.layers[S.active];
   if (!L) { host.innerHTML = ''; return; }
@@ -1534,8 +1543,64 @@ function buildLayerEditor() {
   host.querySelector('select[data-mask=kind]').value = L.mask.kind;
 }
 
-function buildTraceEditor(host) {
-  const t = S.traces.find(t => t.id === S.activeTrace);
+/* ------------------------------------------------------- align panel */
+function buildAlignEditor(host) {
+  const A = S.align;
+  const L = S.layers[A.move];
+  const faceOpts = (selected) => ['front', 'back', 'close']
+    .map(id => `<option value="${id}"${id === selected ? ' selected' : ''}>${LAYER_META[id]}</option>`).join('');
+  const enough = A.pairs.length >= 2;
+  const good = A.pairs.length >= 3;
+  const last = A.last;
+
+  host.innerHTML = `
+    <div class="card">
+      <p class="hint" style="margin:0 0 6px">
+        Click the <b>same physical hole</b> on both photos, in pairs. 3+ points
+        is ideal; 2 points is an exact but unforgiving fit.
+      </p>
+      ${S.mirrorBack ? `<p class="hint" style="margin:0 0 6px;color:#fbbf24">
+        Mirror back is on: the same hole sits at the <b>opposite</b> pixel in the
+        back photo. Click what you see, not the same screen position.
+      </p>` : ''}
+      <div class="row" style="margin:0 0 4px">
+        <label class="sl" style="flex:1;margin:0">reference
+          <select data-a="ref" style="width:100%">${faceOpts(A.ref)}</select></label>
+        <label class="sl" style="flex:1;margin:0">move this one
+          <select data-a="move" style="width:100%">${faceOpts(A.move)}</select></label>
+      </div>
+
+      <div class="sl" style="margin-top:6px">points <span data-v>${A.pairs.length}/3+</span></div>
+      <div class="chips" style="margin-bottom:4px">
+        ${A.pairs.length
+          ? A.pairs.map((_, i) => `<span class="chip">${i + 1}
+              <button data-adel="${i}" title="remove this pair">✕</button></span>`).join('')
+          : '<span class="hint" style="margin:0">none yet</span>'}
+      </div>
+      ${A.pending ? '<p class="hint" style="margin:0 0 4px;color:#22d3ee">… now click the matching hole on the other photo</p>' : ''}
+
+      <div class="row" style="margin:6px 0 0">
+        <button type="button" class="btn small" data-aact="apply" ${enough ? '' : 'disabled style="opacity:.45"'}>align</button>
+        <button type="button" class="btn small" data-aact="undo" ${last ? '' : 'disabled style="opacity:.45"'}>revert</button>
+        <button type="button" class="btn small" data-aact="clear">clear</button>
+      </div>
+
+      ${last ? `<p class="hint" style="margin:6px 0 0">
+        rot ${last.rot.toFixed(1)}° · scale ×${last.scale.toFixed(3)} ·
+        offset ${last.x.toFixed(0)}, ${last.y.toFixed(0)} ·
+        <b style="color:${last.rms > 4 ? '#f59e0b' : '#4ade80'}">${last.rms.toFixed(2)} px rms</b>
+        ${last.n < 3 ? ' · 2-point fit is exact, check it visually' : ''}
+      </p>` : ''}
+      <p class="hint" style="margin:6px 0 0">
+        Tip: set blend to <b>difference</b> on the moving layer — when the fit is
+        right the shared features go black and the misalignment glows.
+      </p>
+    </div>`;
+  host.querySelector('select[data-a=ref]').value = A.ref;
+  host.querySelector('select[data-a=move]').value = A.move;
+}
+
+function buildTraceEditor(host) {  const t = S.traces.find(t => t.id === S.activeTrace);
   if (!t) { host.innerHTML = ''; return; }
   const padList = (t.pads || []).map(id => {
     const p = S.pads.find(x => x.id === id);
@@ -1699,6 +1764,12 @@ $('#layerEditor').addEventListener('change', e => {
     if (f) loadFile(f, S.active).catch(err => status('load failed: ' + err.message));
     return;
   }
+  const aSel = e.target.closest('select[data-a]');
+  if (aSel) {
+    if (aSel.dataset.a === 'ref') alignSetFaces(aSel.value, S.align.move);
+    else alignSetFaces(S.align.ref, aSel.value);
+    return;
+  }
   if (commitLayerField(e.target, false)) return;
   const L = S.layers[S.active];
   const mk = e.target.dataset.mask;
@@ -1712,6 +1783,24 @@ $('#layerEditor').addEventListener('change', e => {
 });
 
 $('#layerEditor').addEventListener('click', e => {
+  const aAct = e.target.dataset.aact;
+  if (aAct) {
+    if (aAct === 'apply') alignApply();
+    else if (aAct === 'undo') alignUndo();
+    else if (aAct === 'clear') {
+      alignReset(false);
+      buildLayerEditor(); render();
+      status('registration points cleared');
+    }
+    return;
+  }
+  const aDel = e.target.dataset.adel;
+  if (aDel != null) {
+    S.align.pairs.splice(+aDel, 1);
+    S.align.last = null;
+    buildLayerEditor(); render();
+    return;
+  }
   const act = e.target.dataset.act;
   if (act === 'persp') {
     S.persist = S.persist && S.persist.layer === S.active ? null : { layer: S.active };
@@ -1761,17 +1850,25 @@ const TOOL_DEFS = {
   trace:   { key: 'T', label: 'Trace', icon: '⌇',  hint: 'click waypoints · Enter to finish · snaps to pads' },
   measure: { key: 'L', label: 'Ruler', icon: '↔',  hint: 'click both ends, type the real length' },
   mask:    { key: 'K', label: 'Mask',  icon: '▢',  hint: 'drag a window over the active layer' },
+  align:   { key: 'A', label: 'Align', icon: '✛',  hint: 'click the same holes on both faces to register the photos' },
 };
 const TOOL_KEYMAP = Object.fromEntries(
   Object.entries(TOOL_DEFS).map(([id, d]) => [d.key.toLowerCase(), id])
 );
-
 function setTool(id, opts = {}) {
   if (!TOOL_DEFS[id]) return;
   S.tool = id;
   // A half-finished measurement must not survive switching tools.
   if (id !== 'measure' && S.measure && S.measure.pending) S.measure = null;
   if (id !== 'trace') S.activeTrace = null;
+  // Alignment mode is only live while its tool is; the point pairs are kept so
+  // switching away and back doesn't lose your work.
+  if (id === 'align') {
+    if (!S.align.active) { S.align.active = true; S.align.phase = 'first'; S.align.pending = null; }
+  } else {
+    S.align.active = false;
+    S.align.pending = null;
+  }
   document.querySelectorAll('#toolbar [data-tool]').forEach(x => {
     const on = x.dataset.tool === id;
     x.classList.toggle('on', on);
@@ -1780,6 +1877,7 @@ function setTool(id, opts = {}) {
   cv.style.cursor = id === 'pan' ? 'grab' : (id === 'pad' || id === 'via') ? 'crosshair' : 'crosshair';
   const hint = $('#toolHint');
   if (hint) hint.textContent = TOOL_DEFS[id].hint;
+  buildLayerEditor();
   render();
   if (opts.announce) status(TOOL_DEFS[id].label + ' tool — ' + TOOL_DEFS[id].hint);
 }
@@ -2285,6 +2383,16 @@ cv.addEventListener('pointerdown', e => {
     drag = null;
     calibrateFromMeasure();
     render(); return;
+  }
+
+  if (S.tool === 'align') {
+    // Which face a click belongs to is decided by which layer sits under the
+    // cursor: the reference face wins if both do, unless we're waiting for the
+    // moving face's point.
+    const expect = S.align.phase === 'first' ? S.align.ref : S.align.move;
+    alignAddPoint(expect, w);
+    render();
+    return;
   }
 
   if (S.tool === 'mask') {
@@ -3715,6 +3823,216 @@ function histUi() {
   if (r) { const can = histIdx < histStack.length - 1; r.disabled = !can; r.style.opacity = can ? 1 : .4; }
 }
 
+/* ------------------------------------------------- photo registration (2D) */
+// Aligning two photos of the same board is a similarity transform: rotation,
+// uniform scale, translation, and (for the back face viewed through the board)
+// a reflection. Umeyama's closed form gives the least-squares optimum for a set
+// of homologous point pairs in one shot — no iteration, no initial guess, which
+// is exactly what you want from "I clicked four holes, snap it".
+//
+// A 2-point fit is exactly determined (no redundancy), so it is accepted but
+// reported as approximate; 3+ points average out clicking error.
+
+function umeyama2d(src, dst) {
+  const n = Math.min(src.length, dst.length);
+  if (n < 2) return null;
+  let mux = 0, muy = 0, dux = 0, duy = 0;
+  for (let i = 0; i < n; i++) {
+    mux += src[i].x; muy += src[i].y;
+    dux += dst[i].x; duy += dst[i].y;
+  }
+  mux /= n; muy /= n; dux /= n; duy /= n;
+
+  let a = 0, b = 0, sxx = 0;
+  for (let i = 0; i < n; i++) {
+    const px = src[i].x - mux, py = src[i].y - muy;
+    const qx = dst[i].x - dux, qy = dst[i].y - duy;
+    a += px * qx + py * qy;     // Σ p·q  (cosine part)
+    b += px * qy - py * qx;     // Σ p×q  (sine part)
+    sxx += px * px + py * py;   // Σ |p|²
+  }
+  if (!(sxx > 1e-12)) return null;
+
+  let c = a / sxx, d = b / sxx;
+  const s = Math.hypot(c, d);
+  if (!Number.isFinite(s) || s <= 1e-9) return null;
+  c /= s; d /= s;               // normalise to a pure rotation
+
+  // The fit has no reflection, so a plain similarity can't mirror a face.
+  // When the caller expects a mirror, apply it in the source frame first.
+  // (Handled by the caller via `mirror`.)
+  const tx = dux - s * (c * mux - d * muy);
+  const ty = duy - s * (d * mux + c * muy);
+
+  let sse = 0, maxErr = 0;
+  for (let i = 0; i < n; i++) {
+    const px = src[i].x, py = src[i].y;
+    const ex = s * (c * px - d * py) + tx;
+    const ey = s * (d * px + c * py) + ty;
+    const e = Math.hypot(ex - dst[i].x, ey - dst[i].y);
+    sse += e * e;
+    if (e > maxErr) maxErr = e;
+  }
+  return {
+    scale: s,
+    rot: Math.atan2(d, c) * 180 / Math.PI,
+    tx, ty,
+    rms: Math.sqrt(sse / n),
+    maxErr,
+    n,
+  };
+}
+
+// Express a similarity in the project's layer fields.
+// layerToWorld maps p → R(rot)·(scale·p) + (x,y), with the back-face mirror and
+// the user's flips folded into per-axis signs.
+//
+// A similarity cannot represent a reflection, so the fit is solved in the frame
+// the layer will have *after* we apply it: the back-face mirror only, with the
+// user's flip flags cleared (a flip is a reflection, and the rotation we solve
+// replaces it). Solving in the pre-apply frame would bake in stale signs.
+function solveLayerAlignment(refPts, movePts, moveLayerId) {
+  const mirror = (moveLayerId === 'back' && S.mirrorBack) ? -1 : 1;
+  const src = movePts.map(p => ({ x: p.x * mirror, y: p.y }));
+  const fit = umeyama2d(src, refPts);
+  if (!fit) return null;
+  return {
+    rot: normRot(fit.rot),
+    scale: clamp(fit.scale, 0.01, 64),
+    x: fit.tx,
+    y: fit.ty,
+    rms: fit.rms,
+    maxErr: fit.maxErr,
+    n: fit.n,
+  };
+}
+
+/* ------------------------------------------------------------------ align UI */
+function alignReset(keepPairs) {
+  S.align.active = true;
+  S.align.phase = 'first';
+  S.align.last = null;
+  if (!keepPairs) S.align.pairs = [];
+}
+
+function alignSetFaces(ref, move) {
+  if (ref === move) return;
+  S.align.ref = ref;
+  S.align.move = move;
+  S.align.pairs = [];       // pairs belong to a specific face pair
+  S.align.phase = 'first';
+  S.align.last = null;
+  buildLayerEditor(); render();
+}
+
+function alignAddPoint(layerId, w) {
+  const A = S.align;
+  // The first click of a pair must land on the reference face, the second on
+  // the face being moved — in that order, whichever way round the user set it.
+  const expect = A.phase === 'first' ? A.ref : A.move;
+  if (layerId !== expect) {
+    status(`click on the ${LAYER_META[expect].toLowerCase()} for this point`);
+    return;
+  }
+  if (A.phase === 'first') {
+    A.pending = { x: w.x, y: w.y };
+    A.phase = 'second';
+    status('now click the same hole on the ' + LAYER_META[A.move].toLowerCase());
+  } else {
+    if (!A.pending) { A.phase = 'first'; return; }
+    A.pairs.push({ a: { x: A.pending.x, y: A.pending.y }, b: { x: w.x, y: w.y } });
+    A.pending = null;
+    A.phase = 'first';
+    status(`point ${A.pairs.length} recorded — ${A.pairs.length < 3 ? 'add at least 3 for a good fit' : 'ready to align'}`);
+  }
+  buildLayerEditor(); render();
+}
+
+function alignApply() {
+  const A = S.align;
+  if (A.pairs.length < 2) { status('need at least 2 point pairs'); return false; }
+  const L = S.layers[A.move];
+  // `a` is a world-space click on the reference face; `b` is a world-space click
+  // on the face we're moving. The solver works in the moving layer's own frame,
+  // so b must be converted back through the layer's current transform first —
+  // otherwise we'd be solving for a transform of a transform.
+  const refPts = A.pairs.map(p => ({ x: p.a.x, y: p.a.y }));
+  const movePts = A.pairs.map(p => worldToLayer(L, p.b));
+  const sol = solveLayerAlignment(refPts, movePts, A.move);
+  if (!sol) { status('could not solve — the points are degenerate'); return false; }
+  // A fit that collapses or explodes the photo means the pairs are wrong
+  // (typically mirrored holes clicked at the same pixel on both faces). Refuse
+  // rather than silently destroying the framing.
+  if (sol.scale < 0.05 || sol.scale > 20) {
+    status(`fit rejected: ×${sol.scale.toFixed(2)} is implausible — check the point pairs`);
+    return false;
+  }
+  if (sol.rms > 25 && A.pairs.length >= 3) {
+    status(`fit is poor (${sol.rms.toFixed(1)} px rms) — the pairs probably don't match`);
+    return false;
+  }
+  const before = { x: L.x, y: L.y, scale: L.scale, rot: L.rot, flipH: L.flipH, flipV: L.flipV };
+  L.x = sol.x; L.y = sol.y; L.scale = sol.scale; L.rot = sol.rot;
+  // The fit was solved for a layer with no flips (see solveLayerAlignment).
+  L.flipH = false; L.flipV = false;
+  L._warp = null;
+  A.last = { ...sol, before };
+  buildLayerEditor(); buildStack(); render(); saveLocal();
+  histCommit('align photos');
+  const err = pxPerMm() > 0 ? ` · ${sol.rms.toFixed(2)} px rms` : '';
+  status(`aligned ${A.move} → ${A.ref}: rot ${sol.rot.toFixed(1)}° · ×${sol.scale.toFixed(3)}${err}`);
+  return true;
+}
+
+function alignUndo() {
+  const A = S.align;
+  if (!A.last) { status('nothing to revert'); return; }
+  const L = S.layers[A.move];
+  Object.assign(L, A.last.before);
+  L._warp = null;
+  A.last = null;
+  buildLayerEditor(); render(); saveLocal();
+  histCommit('revert alignment');
+  status('alignment reverted');
+}
+// Draw the registration overlay: numbered pairs, cross-hair on each click, and
+// the live fit error once it has been applied.
+function drawAlignOverlay(g) {
+  const A = S.align;
+  const z = S.view.zoom;
+  g.save();
+  g.lineWidth = 1.4 / z;
+  g.font = `${clamp(11 / z, 6, 26)}px ui-monospace,monospace`;
+  g.textAlign = 'center'; g.textBaseline = 'middle';
+
+  for (let i = 0; i < A.pairs.length; i++) {
+    const { a, b } = A.pairs[i];
+    // join the homologous points so a bad pairing is visible immediately
+    g.strokeStyle = '#f59e0baa';
+    g.setLineDash([4 / z, 4 / z]);
+    g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.stroke();
+    g.setLineDash([]);
+    for (const [pt, col] of [[a, '#22d3ee'], [b, '#f59e0b']]) {
+      g.strokeStyle = col;
+      g.beginPath(); g.arc(pt.x, pt.y, 7 / z, 0, 7); g.stroke();
+      g.beginPath();
+      g.moveTo(pt.x - 11 / z, pt.y); g.lineTo(pt.x + 11 / z, pt.y);
+      g.moveTo(pt.x, pt.y - 11 / z); g.lineTo(pt.x, pt.y + 11 / z);
+      g.stroke();
+    }
+    g.fillStyle = '#e6edf5';
+    g.fillText(String(i + 1), a.x, a.y - 15 / z);
+  }
+
+  if (A.pending) {
+    g.strokeStyle = '#22d3ee';
+    g.setLineDash([3 / z, 3 / z]);
+    g.beginPath(); g.arc(A.pending.x, A.pending.y, 9 / z, 0, 7); g.stroke();
+    g.setLineDash([]);
+  }
+  g.restore();
+}
+
 /* ------------------------------------------------------------ layer peek */
 // Hold a key to hide one face of the board and see through to the other.
 // The real `visible` flag is never destroyed: the pre-peek value is kept in
@@ -3875,6 +4193,7 @@ async function selftest() {
   await selftestUndo();
   await selftestComponents();
   await selftestToolsTraces();
+  await selftestAlign();
 
   if (selftestFailures) {
     status(`selftest FAILED — ${selftestFailures} assertion${selftestFailures === 1 ? '' : 's'} (see console)`);
@@ -3894,7 +4213,8 @@ async function selftestToolsTraces() {
     'tool keys H/P/V', JSON.stringify(TOOL_KEYMAP));
   check(TOOL_KEYMAP.t === 'trace' && TOOL_KEYMAP.l === 'measure' && TOOL_KEYMAP.k === 'mask',
     'tool keys T/L/K');
-  check(Object.keys(TOOL_KEYMAP).length === 6, 'exactly six tool keys', Object.keys(TOOL_KEYMAP).length);
+  check(Object.keys(TOOL_KEYMAP).length === 7, 'exactly seven tool keys', Object.keys(TOOL_KEYMAP).length);
+  check(TOOL_KEYMAP.a === 'align', 'A selects the align tool');
   setTool('via');
   check(S.tool === 'via', 'setTool switches the tool');
   check(document.querySelector('#toolbar [data-tool=via]').classList.contains('on'),
@@ -4084,8 +4404,132 @@ async function selftestToolsTraces() {
   await restoreSession(keeper);
 }
 
+/* ------------------------------------------------------- alignment test */
+async function selftestAlign() {
+  const keeper = sessionObject(true);
+
+  // Umeyama on a pure translation
+  let fit = umeyama2d([{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 0, y: 10 }],
+                      [{ x: 5, y: 7 }, { x: 15, y: 7 }, { x: 5, y: 17 }]);
+  check(!!fit, 'translation fit solves');
+  check(near2(fit.rot, 0) && near2(fit.scale, 1) && near2(fit.tx, 5) && near2(fit.ty, 7),
+    'translation fit is exact', JSON.stringify(fit));
+
+  // rotation 90° + scale 2 about the origin
+  const rotPts = (p) => ({ x: -2 * p.y, y: 2 * p.x });
+  const src = [{ x: 1, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }, { x: 2, y: 3 }];
+  fit = umeyama2d(src, src.map(rotPts));
+  check(near2(fit.rot, 90) && near2(fit.scale, 2), 'rotation+scale recovered',
+    `rot=${fit.rot.toFixed(3)} scale=${fit.scale.toFixed(3)}`);
+  check(fit.rms < 1e-9, 'rotation+scale fit is exact', fit.rms);
+
+  // the fit must actually map source onto destination (round-trip the transform)
+  const applyFit = (f, p) => {
+    const a = rad(f.rot);
+    return {
+      x: f.scale * (Math.cos(a) * p.x - Math.sin(a) * p.y) + f.tx,
+      y: f.scale * (Math.sin(a) * p.x + Math.cos(a) * p.y) + f.ty,
+    };
+  };
+  const dstPts = src.map(rotPts);
+  const okMap = src.every((p, i) => {
+    const got = applyFit(fit, p);
+    return Math.hypot(got.x - dstPts[i].x, got.y - dstPts[i].y) < 1e-9;
+  });
+  check(okMap, 'fit maps every source point onto its destination');
+
+  // Noise averaging: perturb the *destinations* so the fit is over-determined.
+  const clean = src.map(rotPts);
+  const noisy = clean.map((p, i) => ({ x: p.x + (i % 2 ? 0.8 : -0.6), y: p.y + (i % 2 ? -0.5 : 0.7) }));
+  fit = umeyama2d(src, noisy);
+  check(Math.abs(fit.rot - 90) < 12 && Math.abs(fit.scale - 2) < 0.4,
+    'noisy points still land near the truth', `rot=${fit.rot.toFixed(1)} scale=${fit.scale.toFixed(2)}`);
+  check(fit.rms > 0 && fit.maxErr >= fit.rms, 'error metrics reported for noisy data',
+    `rms=${fit.rms && fit.rms.toFixed(3)} max=${fit.maxErr && fit.maxErr.toFixed(3)}`);
+
+  // degenerate input is refused, not silently wrong
+  check(umeyama2d([{ x: 1, y: 1 }], [{ x: 2, y: 2 }]) === null, 'one point is not enough');
+  check(umeyama2d([{ x: 0, y: 0 }, { x: 0, y: 0 }], [{ x: 1, y: 0 }, { x: 0, y: 1 }]) === null,
+    'coincident points are refused');
+
+  // --- the real integration path. `a` and `b` are both world-space clicks, the
+  // way the UI records them; alignApply converts b into the moving layer's
+  // frame before solving.
+  const back = S.layers.back;
+  const saved = { x: back.x, y: back.y, scale: back.scale, rot: back.rot };
+  Object.assign(back, { x: -60, y: 40, scale: 1.4, rot: 17 });
+  S.mirrorBack = true;
+
+  // Four holes, in world space, as the front face shows them.
+  const worldPts = [{ x: 100, y: 80 }, { x: 260, y: 80 }, { x: 260, y: 210 }, { x: 100, y: 210 }];
+
+  // The user clicks the same holes on the back photo. Rather than synthesising
+  // those click positions myself (easy to get the mirror wrong), start from the
+  // invariant we actually care about and let the solve produce it: take the
+  // layer-local points, push them through the CURRENT transform to get plausible
+  // clicks, then check the solve brings them HOME.
+  const localPts = worldPts.map(w => worldToLayer(back, w));
+  const clicks = localPts.map(p => layerToWorld(back, p));   // == worldPts, by construction
+
+  S.align = { active: true, phase: 'first', ref: 'front', move: 'back',
+    pairs: worldPts.map((w, i) => ({ a: w, b: clicks[i] })), last: null, pending: null };
+  const applied = alignApply();
+  check(applied, 'alignApply succeeds on a valid set');
+
+  // The transform must now map those layer-local points onto the world points.
+  const aligned = localPts.map(p => layerToWorld(back, p));
+  const worst = Math.max(...aligned.map((p, i) => Math.hypot(p.x - worldPts[i].x, p.y - worldPts[i].y)));
+  check(worst < 0.05, 'all homologous points land on their reference after aligning', worst.toFixed(4));
+  check(S.align.last && S.align.last.rms < 0.05, 'clean four-point fit reports ~0 rms',
+    S.align.last && S.align.last.rms);
+
+  // revert restores exactly what was there before
+  alignUndo();
+  check(near2(back.rot, 17) && near2(back.scale, 1.4) && near2(back.x, -60) && near2(back.y, 40),
+    'revert restores the previous transform', JSON.stringify({ r: back.rot, s: back.scale }));
+
+  // a 2-point set is accepted; a 1-point set is not
+  S.align.pairs = [{ a: { x: 0, y: 0 }, b: { x: 0, y: 0 } }];
+  const onePt = alignApply();
+  check(onePt === false, 'one pair is refused');
+  S.align.pairs = [{ a: { x: 0, y: 0 }, b: { x: 10, y: 10 } }, { a: { x: 100, y: 0 }, b: { x: 110, y: 10 } }];
+  const twoPt = alignApply();
+  check(twoPt === true, 'two pairs is enough');
+  check(S.align.last && S.align.last.n === 2, 'two-point fit reports n=2');
+
+  // A wildly implausible fit (collapsing the photo) must be refused instead of
+  // mangling the layer — this is the "clicked the same pixel on both faces" case.
+  const scaleBefore = S.layers.back.scale;
+  S.align.pairs = [
+    { a: { x: 0, y: 0 }, b: { x: 0, y: 0 } },
+    { a: { x: 400, y: 0 }, b: { x: 1, y: 0 } },
+    { a: { x: 400, y: 400 }, b: { x: 1, y: 1 } },
+  ];
+  const implausible = alignApply();
+  check(implausible === false, 'implausible scale is refused');
+  check(near2(S.layers.back.scale, scaleBefore), 'refused fit left the layer untouched',
+    S.layers.back.scale);
+
+  // changing the face pair clears stale registration points
+  alignSetFaces('back', 'front');
+  check(S.align.pairs.length === 0, 'points cleared when the face pair changes');
+  check(S.align.ref === 'back' && S.align.move === 'front', 'faces swapped');
+
+  // alignment mode must not leak into the saved project
+  const snap = sessionObject(false);
+  check(!('align' in snap), 'transient alignment state is not serialised');
+
+  Object.assign(back, saved);
+  S.align = { active: false, phase: 'first', ref: 'front', move: 'back', pairs: [], last: null, pending: null };
+  histReset();
+  await restoreSession(keeper);
+}
+
+const near2 = (a, b, tol = 1e-6) => Math.abs(a - b) < tol;
+
 /* ------------------------------------------- components / documents test */
-async function selftestComponents() {  const keeper = sessionObject(true);
+async function selftestComponents() {
+  const keeper = sessionObject(true);
   const nComp = S.components.length, nDocs = S.docs.length;
 
   const c = addComponent({ x: 12, y: 34 }, 'resistor');
