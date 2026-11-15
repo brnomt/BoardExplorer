@@ -139,6 +139,8 @@
     <section>
       <h2>Keys</h2>
       <p class="hint">
+        <kbd>Ctrl</kbd>+<kbd>Z</kbd> undo · <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> redo<br>
+        <kbd>S</kbd> hold = hide front · <kbd>B</kbd> hold = hide back<br>
         <kbd>Z</kbd> zoom · <kbd>M</kbd> loupe · <kbd>V</kbd> toggle via<br>
         <kbd>1</kbd> GND · <kbd>2</kbd> VCC · <kbd>3</kbd> 3V3 · <kbd>4</kbd> SIG · <kbd>5</kbd> 5V · <kbd>0</kbd> clear net<br>
         <kbd>R</kbd>/<kbd>Shift</kbd>+<kbd>R</kbd> rotate layer ±1° · <kbd>←↑↓→</kbd> nudge · <kbd>Del</kbd> delete<br>
@@ -161,6 +163,9 @@
         <select id="padSide"><option value="front">front</option><option value="back">back</option></select>
       </label>
       <button id="btnLoupe" title="precision loupe (M)" type="button">🔍</button>
+      <span class="sep"></span>
+      <button id="btnUndo" title="undo (Ctrl+Z)" type="button">↶</button>
+      <button id="btnRedo" title="redo (Ctrl+Shift+Z)" type="button">↷</button>
       <span class="sep"></span>
       <span class="hint" id="coords">–</span>
     </div>
@@ -287,6 +292,7 @@ const S = {
   pin1: { x: -150, y: -150, on: true },
   guides: { grid: true, cross: true, rulers: true, pin1: true, outline: true },
   loupe: { on: false, factor: 4 },
+  peek: { id: null, wasVisible: true },   // layer temporarily hidden by a held key
   cursor: null,           // {sx,sy,x,y} last pointer over canvas
   persist: null,          // {a,b} corners while editing a perspective
   maskEdit: null,         // {layer, ax, ay} while dragging a mask
@@ -503,6 +509,7 @@ function addLink(padId, pinN) {
   S.links = S.links.filter(l => l.pad !== padId);
   S.links.push({ pad: padId, pin: pinN | 0, note: 'unknown' });
   renderTables(); render(); saveLocal();
+  histCommit('link pad ' + padId + ' → pin ' + (pinN | 0));
 }
 
 /* ------------------------------------------------------------- calibration */
@@ -1148,10 +1155,11 @@ function buildStack() {
   const rows = [];
   for (const id of ['close', 'front', 'back']) {
     const L = S.layers[id];
+    const peeking = S.peek.id === id;
     rows.push(`<div class="lay${S.active === id ? ' sel' : ''}${L.visible ? '' : ' off'}" data-layer="${id}">
       <span class="eye" data-eye="${id}">${L.visible ? '◉' : '○'}</span>
       <span class="nm">${esc(L.name || LAYER_META[id])}</span>
-      <span class="sub">${L.mask.on ? 'mask' : ''}${L.id === 'back' && S.mirrorBack ? ' ⇋' : ''}</span>
+      <span class="sub">${peeking ? 'peek ' : ''}${L.mask.on ? 'mask' : ''}${L.id === 'back' && S.mirrorBack ? ' ⇋' : ''}</span>
     </div>`);
   }
   for (const t of [...S.traces].reverse()) {
@@ -1261,7 +1269,7 @@ function buildTraceEditor(host) {
 // Both paths must write the same fields, or flip/blend silently never save.
 const LAYER_CHECKBOXES = new Set(['flipH', 'flipV']);
 
-function commitLayerField(el) {
+function commitLayerField(el, coalesce) {
   const k = el && el.dataset && el.dataset.k;
   const L = S.layers[S.active];
   if (!k || !L) return false;
@@ -1280,11 +1288,12 @@ function commitLayerField(el) {
       : Math.round(fin(L[k], 0) * 100) + '%';
   }
   render(); saveLocal();
+  if (coalesce) histSoon('layer ' + k); else histCommit('layer ' + k);
   return true;
 }
 
 $('#layerEditor').addEventListener('input', e => {
-  if (commitLayerField(e.target)) return;
+  if (commitLayerField(e.target, true)) return;
   const L = S.layers[S.active];
   const mk = e.target.dataset.mask;
   if (mk && L) {
@@ -1293,14 +1302,14 @@ $('#layerEditor').addEventListener('input', e => {
     else L.mask[mk] = num(e.target.value, L.mask[mk]);
     const out = $('#v-feather');
     if (out && mk === 'feather') out.textContent = Math.round(L.mask.feather * 100) + '%';
-    render(); saveLocal(); return;
+    render(); saveLocal(); histSoon('mask ' + mk); return;
   }
   const tk = e.target.dataset.t;
   if (tk) {
     const t = S.traces.find(t => t.id === S.activeTrace);
     if (!t) return;
     t[tk] = tk === 'width' ? num(e.target.value, t.width) : e.target.value;
-    buildStack(); render(); saveLocal();
+    buildStack(); render(); saveLocal(); histSoon('trace ' + tk);
   }
 });
 
@@ -1310,16 +1319,16 @@ $('#layerEditor').addEventListener('change', e => {
     if (f) loadFile(f, S.active).catch(err => status('load failed: ' + err.message));
     return;
   }
-  if (commitLayerField(e.target)) return;
+  if (commitLayerField(e.target, false)) return;
   const L = S.layers[S.active];
   const mk = e.target.dataset.mask;
   if (mk && L) {
     if (mk === 'on' || mk === 'invert') L.mask[mk] = !!e.target.checked;
     else if (mk === 'kind') L.mask.kind = e.target.value === 'rect' ? 'rect' : 'ellipse';
     else L.mask[mk] = num(e.target.value, L.mask[mk]);
-    render(); saveLocal(); return;
+    render(); saveLocal(); histCommit('mask ' + mk); return;
   }
-  if (e.target.dataset.t === 'side') { render(); saveLocal(); }
+  if (e.target.dataset.t === 'side') { render(); saveLocal(); histCommit('trace side'); }
 });
 
 $('#layerEditor').addEventListener('click', e => {
@@ -1331,12 +1340,13 @@ $('#layerEditor').addEventListener('click', e => {
   if (act === 'resetPersp') {
     const L = S.layers[S.active];
     L.quad = [[0,0],[1,0],[1,1],[0,1]]; L._warp = null;
-    render(); saveLocal(); return;
+    render(); saveLocal(); histCommit('reset corners'); return;
   }
   const del = e.target.dataset.tdel;
   if (del) {
     S.traces = S.traces.filter(t => t.id !== +del);
     S.activeTrace = null; buildStack(); buildLayerEditor(); render(); saveLocal();
+    histCommit('delete trace');
   }
 });
 
@@ -1356,6 +1366,8 @@ bindGuide('#gGrid', 'grid'); bindGuide('#gCross', 'cross'); bindGuide('#gRulers'
 bindGuide('#gPin1', 'pin1'); bindGuide('#gOutline', 'outline');
 $('#gLoupe').addEventListener('change', e => setLoupe(e.target.checked));
 $('#btnLoupe').addEventListener('click', () => setLoupe(!S.loupe.on));
+$('#btnUndo').addEventListener('click', () => undo());
+$('#btnRedo').addEventListener('click', () => redo());
 $('#fit').addEventListener('click', fitView);
 $('#zoom1').addEventListener('click', () => {
   const W = cv.clientWidth / 2, H = cv.clientHeight / 2;
@@ -1363,7 +1375,7 @@ $('#zoom1').addEventListener('click', () => {
   S.view.zoom = 1; S.view.tx = W - w.x; S.view.ty = H - w.y; render();
 });
 $('#useMm').addEventListener('change', e => { S.useMm = e.target.checked; render(); saveLocal(); });
-$('#calClear').addEventListener('click', () => { S.cal = null; S.measure = null; updateCalInfo(); render(); saveLocal(); });
+$('#calClear').addEventListener('click', () => { S.cal = null; S.measure = null; updateCalInfo(); render(); saveLocal(); histCommit('clear calibration'); });
 $('#calMm').addEventListener('change', () => { updateCalInfo(); render(); });
 
 function updateCalInfo() {
@@ -1424,12 +1436,14 @@ $('#mcuPkg').addEventListener('change', e => {
   if (v === 'custom') { S.mcu.pkg = 'custom'; saveLocal(); return; }
   applyPkgPreset(v);
   mcuSync();
+  histCommit('preset ' + v);
 });
 $('#mcuN').addEventListener('change', e => {
   S.mcu.n = clamp(num(e.target.value, 32) | 0, 1, 256);
   S.mcu.pkg = 'custom';
   $('#mcuPkg').value = 'custom';
   $('#mcuN').value = S.mcu.n; ensurePins(); updatePitch(); mcuSync();
+  histCommit('pin count');
 });
 $('#mcuName').addEventListener('input', e => { S.mcu.name = e.target.value; saveLocal(); });
 $('#mcuW').addEventListener('input', e => { S.mcu.w = Math.max(2, num(e.target.value, 220)); updatePitch(); render(); saveLocal(); });
@@ -1446,7 +1460,7 @@ $('#mcuRotSlider').addEventListener('input', e => {
 const bindMcu = (sel, key, outSel, fmt) => $(sel).addEventListener('input', e => {
   S.mcu[key] = num(e.target.value, S.mcu[key]);
   $(outSel).textContent = fmt(S.mcu[key]);
-  updatePitch(); render(); saveLocal();
+  updatePitch(); render(); saveLocal(); histSoon('package ' + key);
 });
 bindMcu('#mcuCorner', 'corner', '#mcuCornerV', v => Math.round(v * 100) + '%');
 bindMcu('#mcuFill', 'pinFill', '#mcuFillV', v => Math.round(v * 100) + '%');
@@ -1608,6 +1622,7 @@ function addPad(w, opts = {}) {
   };
   S.pads.push(p); S.selectedPad = p.id;
   renderTables(); render(); saveLocal();
+  histCommit(via ? 'add via' : 'add pad');
   return p;
 }
 function deletePad(id) {
@@ -1616,6 +1631,7 @@ function deletePad(id) {
   if (S.selectedPad === id) S.selectedPad = null;
   if (S.hoverPad === id) S.hoverPad = null;
   renderTables(); render(); saveLocal();
+  histCommit('delete pad');
 }
 function toggleVia(pad) {
   if (!pad) return;
@@ -1629,6 +1645,7 @@ function toggleVia(pad) {
     if (pad.label === 'via') pad.label = '';
   }
   renderTables(); render(); saveLocal();
+  histCommit(pad.via ? 'pad → via' : 'via → pad');
 }
 function setPadNet(pad, netId) {
   if (!pad) return;
@@ -1642,6 +1659,7 @@ function setPadNet(pad, netId) {
     if (!pad.label || NET_DEFS[pad.label] || pad.label === 'via') pad.label = def.label;
   }
   renderTables(); render(); saveLocal();
+  histCommit('net ' + (netId || 'none'));
 }
 
 cv.addEventListener('pointerdown', e => {
@@ -1693,7 +1711,7 @@ cv.addEventListener('pointerdown', e => {
       S.traces.push(t); S.activeTrace = id;
     }
     t.pts.push({ x: w.x, y: w.y });
-    buildStack(); buildLayerEditor(); render(); saveLocal();
+    buildStack(); buildLayerEditor(); render(); saveLocal(); histSoon('add trace point');
     return;
   }
 
@@ -1804,9 +1822,16 @@ cv.addEventListener('pointermove', e => {
 });
 
 cv.addEventListener('pointerup', () => {
+  const wasDrag = drag && drag.type;
   drag = null;
   cv.style.cursor = S.tool === 'pan' ? 'grab' : (S.tool === 'pad' || S.tool === 'via') ? 'crosshair' : 'cell';
   saveLocal();
+  // One history entry per completed gesture, not per pointermove frame.
+  if (wasDrag) histCommit({
+    pad: 'move pad', layer: 'move layer', pin1: 'move pin 1',
+    'mcu-move': 'move package', 'mcu-rot': 'rotate package', 'mcu-resize': 'resize package',
+    persp: 'perspective corner', mask: 'mask', wpt: 'move trace point',
+  }[wasDrag] || '');
 });
 cv.addEventListener('pointercancel', () => { drag = null; });
 cv.addEventListener('pointerleave', () => {
@@ -1843,6 +1868,7 @@ function calibrateFromMeasure() {
   updateCalInfo(); updatePitch();
   status(`${px.toFixed(1)} px = ${mm} mm  →  ${(px / mm).toFixed(3)} px/mm`);
   saveLocal();
+  histCommit('calibration');
 }
 
 /* ------------------------------------------------------------------ tables */
@@ -1960,23 +1986,69 @@ $('#padList').addEventListener('change', e => {
     if (p) setPadNet(p, net.value);
   }
 });
+
 $('#linkTable').addEventListener('change', e => {
   const sel = e.target.closest('[data-note]'); if (!sel) return;
-  const l = linkOf(+sel.dataset.note); if (l) { l.note = sel.value; saveLocal(); }
+  const l = linkOf(+sel.dataset.note); if (l) { l.note = sel.value; saveLocal(); histCommit('continuity note'); }
 });
 $('#linkTable').addEventListener('click', e => {
   const un = e.target.closest('[data-unlink]');
   if (un) {
     S.links = S.links.filter(l => l.pad !== +un.dataset.unlink);
-    renderTables(); render(); saveLocal(); return;
+    renderTables(); render(); saveLocal(); histCommit('unlink pad'); return;
   }
   const row = e.target.closest('[data-rowpad]');
   if (row) { S.selectedPad = +row.dataset.rowpad; renderTables(); render(); }
 });
 
 /* ------------------------------------------------------------------- keys */
+// Held-key layer peek. `S` / `B` hide the top/bottom face while held so you can
+// read the other side without losing your spot; releasing restores it.
+const PEEK_KEYS = { s: 'front', b: 'back', S: 'front', B: 'back' };
+const peekKeyOf = e => (e.ctrlKey || e.metaKey || e.altKey ? null : PEEK_KEYS[e.key]);
+
+addEventListener('keyup', e => {
+  const id = peekKeyOf(e);
+  if (id && S.peek.id === id) { peekEnd(); saveLocal(); }
+});
+
+addEventListener('blur', () => { if (S.peek.id) { peekEnd(); saveLocal(); } });
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden' && S.peek.id) peekEnd();
+});
+
 addEventListener('keydown', e => {
-  if (/^(input|textarea|select)$/i.test(e.target.tagName)) return;
+  const tag = e.target.tagName;
+  const isField = /^(input|textarea|select)$/i.test(tag);
+  // Text-entry fields keep the browser's own text undo; canvas-wide undo is for
+  // everything else (ranges, checkboxes, the canvas itself).
+  const isTextField = tag === 'TEXTAREA'
+    || (tag === 'INPUT' && !/^(range|checkbox|radio|file|button|submit|color)$/i.test(e.target.type || 'text'));
+
+  // Undo/redo
+  if ((e.ctrlKey || e.metaKey) && !e.altKey && !isTextField) {
+    const k = e.key.toLowerCase();
+    if (k === 'z') {
+      e.preventDefault();
+      if (e.shiftKey) redo(); else undo();
+      return;
+    }
+    if (k === 'y') { e.preventDefault(); redo(); return; }
+  }
+
+  if (isField) return;
+
+  const peekId = peekKeyOf(e);
+  if (peekId) {
+    if (e.repeat) return;               // keydown repeats while held
+    e.preventDefault();
+    if (!S.peek.id) {
+      peekStart(peekId);
+      status(`${peekId} hidden while held — release to restore`);
+    }
+    return;
+  }
+
   const pad = S.pads.find(p => p.id === S.selectedPad);
   const step = e.shiftKey ? 10 : 1;
   if (NET_KEYS[e.key]) {
@@ -2055,6 +2127,8 @@ function projSlug() {
 function sessionObject(withImages = true) {
   const layers = {};
   for (const [id, L] of Object.entries(S.layers)) {
+    // A held peek key must never leak into the saved project.
+    const visible = (S.peek.id === id) ? S.peek.wasVisible : (L.visible !== false);
     layers[id] = {
       name: L.name, src: withImages ? L.src : null,
       // flat geometry (v1/v2/v3 readers)
@@ -2064,7 +2138,7 @@ function sessionObject(withImages = true) {
       flipH: !!L.flipH, flipV: !!L.flipV,
       opacity: clamp(fin(L.opacity, 1), 0, 1),
       blend: BLEND_OPS.has(L.blend) ? L.blend : 'source-over',
-      visible: L.visible !== false,
+      visible,
       bright: clamp(fin(L.bright, 1), .05, 4), contrast: clamp(fin(L.contrast, 1), .05, 4),
       // nested geometry (v4 readers) — same values, one object to diff/restore
       transform: {
@@ -2308,6 +2382,7 @@ async function restoreSession(d) {
   // A loaded project becomes the current session, so closing the tab right
   // after opening a file doesn't silently fall back to the previous project.
   saveLocal();
+  histReset();          // a loaded project is the new undo floor
   if (warnings.length) status(warnings.join(' · '));
 }
 
@@ -2434,6 +2509,130 @@ document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') flushLocal();
 });
 
+/* ----------------------------------------------------------------- history */
+// Undo is whole-state, not per-action: a snapshot of everything the user can
+// edit (pads, traces, links, MCU, layer transforms, homography, calibration).
+// Images are deliberately excluded — they are the biggest part of the payload
+// and a photo can't be "undone" into anything else.
+const HIST_LIMIT = 80;
+let histStack = [], histIdx = -1, histT = null;
+
+function histSnapshot() {
+  const layers = {};
+  for (const id of LAYER_IDS) {
+    const L = S.layers[id];
+    if (!L) continue;
+    layers[id] = {
+      x: L.x, y: L.y, scale: L.scale, rot: L.rot, flipH: !!L.flipH, flipV: !!L.flipV,
+      opacity: L.opacity, blend: L.blend, visible: L.visible,
+      bright: L.bright, contrast: L.contrast, quad: L.quad, mask: L.mask,
+    };
+  }
+  return JSON.stringify({
+    pads: S.pads, traces: S.traces, links: S.links,
+    nextId: S.nextId, nextTraceId: S.nextTraceId,
+    mcu: S.mcu, pin1: S.pin1, cal: S.cal, layers,
+  });
+}
+
+function histCommit(label) {
+  const snap = histSnapshot();
+  if (histIdx >= 0 && histStack[histIdx].snap === snap) return false;
+  histStack.length = histIdx + 1;      // drop the redo branch
+  histStack.push({ snap, label: label || '' });
+  if (histStack.length > HIST_LIMIT) histStack.shift();
+  histIdx = histStack.length - 1;
+  histUi();
+  return true;
+}
+
+// For continuous controls (sliders, typing): coalesce into one entry.
+function histSoon(label) {
+  clearTimeout(histT);
+  histT = setTimeout(() => { histT = null; histCommit(label); }, 450);
+}
+
+function histFlush() {
+  if (!histT) return;
+  clearTimeout(histT); histT = null;
+  histCommit();
+}
+
+function histReset() {
+  clearTimeout(histT); histT = null;
+  histStack = []; histIdx = -1;
+  histCommit('initial');
+  histUi();
+}
+
+function applySnapshot(snap) {
+  const d = JSON.parse(snap);
+  S.pads = d.pads; S.traces = d.traces; S.links = d.links;
+  S.nextId = d.nextId; S.nextTraceId = d.nextTraceId;
+  Object.assign(S.mcu, d.mcu);
+  S.pin1 = d.pin1;
+  S.cal = d.cal;
+  for (const id of LAYER_IDS) {
+    const st = d.layers[id], L = S.layers[id];
+    if (!st || !L) continue;
+    Object.assign(L, {
+      x: st.x, y: st.y, scale: st.scale, rot: st.rot, flipH: st.flipH, flipV: st.flipV,
+      opacity: st.opacity, blend: st.blend, visible: st.visible,
+      bright: st.bright, contrast: st.contrast, quad: st.quad, mask: st.mask,
+    });
+    L._warp = null;                    // quad may have changed
+  }
+  ensurePins();
+  if (S.selectedPad != null && !S.pads.some(p => p.id === S.selectedPad)) S.selectedPad = null;
+  if (S.activeTrace != null && !S.traces.some(t => t.id === S.activeTrace)) S.activeTrace = null;
+  refreshUi(); updateCalInfo(); updatePitch(); render(); saveLocal();
+}
+
+function undo() {
+  histFlush();
+  if (histIdx <= 0) { status('nothing to undo'); return; }
+  histIdx--;
+  applySnapshot(histStack[histIdx].snap);
+  histUi();
+  status('undo ' + (histStack[histIdx].label ? '· ' + histStack[histIdx].label : ''));
+}
+
+function redo() {
+  if (histT) { clearTimeout(histT); histT = null; histCommit(); }
+  if (histIdx >= histStack.length - 1) { status('nothing to redo'); return; }
+  histIdx++;
+  applySnapshot(histStack[histIdx].snap);
+  histUi();
+  status('redo ' + (histStack[histIdx].label ? '· ' + histStack[histIdx].label : ''));
+}
+
+function histUi() {
+  const u = $('#btnUndo'), r = $('#btnRedo');
+  if (u) { u.disabled = histIdx <= 0; u.style.opacity = histIdx <= 0 ? .4 : 1; }
+  if (r) { const can = histIdx < histStack.length - 1; r.disabled = !can; r.style.opacity = can ? 1 : .4; }
+}
+
+/* ------------------------------------------------------------ layer peek */
+// Hold a key to hide one face of the board and see through to the other.
+// The real `visible` flag is never destroyed: the pre-peek value is kept in
+// S.peek and restored on keyup, and sessionObject() writes the real value so a
+// held key can't leak a hidden layer into the saved project.
+function peekStart(id) {
+  const L = S.layers[id];
+  if (!L || S.peek.id) return;
+  S.peek = { id, wasVisible: L.visible };
+  L.visible = !L.visible;
+  buildStack(); render();
+}
+
+function peekEnd() {
+  if (!S.peek.id) return;
+  const L = S.layers[S.peek.id];
+  if (L) L.visible = S.peek.wasVisible;
+  S.peek = { id: null, wasVisible: true };
+  buildStack(); render();
+}
+
 /* -------------------------------------------------------------------- boot */
 ensurePins();
 buildStack();
@@ -2442,6 +2641,7 @@ renderTables();
 updateCalInfo();
 updatePitch();
 render();
+histReset();
 
 new ResizeObserver(render).observe($('#stage'));
 
@@ -2461,6 +2661,8 @@ new ResizeObserver(render).observe($('#stage'));
 })();
 
 /* ---------------------------------------------------------------- selftest */
+const near = (a, b) => Math.abs(a - b) < 1e-9;
+
 async function selftest() {
   const m = { n: 32, w: 200, h: 200, x: 0, y: 0, rot: 0 };
   const p = pinLayout(m);
@@ -2556,9 +2758,70 @@ async function selftest() {
   Object.assign(S.mcu, prev); ensurePins();
 
   await selftestPersistence();
+  await selftestUndo();
 
   status('selftest done — see console');
   console.log('%cBoardExplorer selftest passed', 'color:#22d3ee');
+}
+
+/* ------------------------------------------------- undo / peek round-trip test */
+async function selftestUndo() {
+  const keeper = sessionObject(true);
+  histReset();
+  const startPads = S.pads.length;
+
+  // mutating via the real helpers must create undo steps
+  addPad({ x: 5, y: 6 }, {});
+  addPad({ x: 7, y: 8 }, { via: true });
+  console.assert(S.pads.length === startPads + 2, 'pads added');
+  undo();
+  console.assert(S.pads.length === startPads + 1, 'undo removes the last pad', S.pads.length);
+  undo();
+  console.assert(S.pads.length === startPads, 'undo removes the second pad', S.pads.length);
+  redo();
+  console.assert(S.pads.length === startPads + 1, 'redo restores a pad', S.pads.length);
+
+  // a trace point added, then undone, must not leave an empty trace behind
+  S.tool = 'trace';
+  const before = S.traces.length;
+  S.activeTrace = null;
+  const p0 = { x: 0, y: 0 };
+  (function pushPoint(w) {
+    // mirrors the canvas trace-tool branch
+    let t = S.traces.find(t => t.id === S.activeTrace);
+    if (!t) {
+      const id = S.nextTraceId++;
+      t = { id, name: 'trace ' + id, color: '#22d3ee', side: 'front', visible: true, width: 3, pts: [] };
+      S.traces.push(t); S.activeTrace = id;
+    }
+    t.pts.push({ x: w.x, y: w.y });
+    histCommit('add trace point');
+  })(p0);
+  console.assert(S.traces.length === before + 1 && S.traces[before].pts.length === 1, 'trace point added');
+  undo();
+  console.assert(S.traces.length === before, 'undo removes the trace with its last point', S.traces.length);
+
+  // layer transform changes are undoable
+  const rot0 = S.layers.front.rot;
+  S.layers.front.rot = 45;
+  histCommit('layer rot');
+  undo();
+  console.assert(near(S.layers.front.rot, rot0), 'undo restores layer rotation', S.layers.front.rot);
+
+  // peek must not destroy the real visibility, nor leak into the payload
+  S.layers.front.visible = true;
+  peekStart('front');
+  console.assert(S.layers.front.visible === false, 'peek hides the layer');
+  console.assert(sessionObject(false).layers.front.visible === true, 'peek does not leak into the saved payload');
+  peekEnd();
+  console.assert(S.layers.front.visible === true, 'peek restores the original visibility');
+  S.layers.back.visible = false;
+  peekStart('back');
+  peekEnd();
+  console.assert(S.layers.back.visible === false, 'peek restores a layer that was already off');
+
+  histReset();
+  await restoreSession(keeper);
 }
 
 /* ------------------------------------------------ persistence round-trip test */
@@ -2568,7 +2831,6 @@ async function selftest() {
 async function selftestPersistence() {
   const tiny = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
   const keeper = sessionObject(true);
-  const near = (a, b) => Math.abs(a - b) < 1e-9;
 
   // A layer that is already framed, then given a photo: the framing must stay.
   await setLayerSrc('front', tiny, 'front.png', { resetTransform: true, fit: false, save: false });
