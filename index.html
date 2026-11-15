@@ -1,0 +1,1179 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BoardExplorer — PCB pad ↔ MCU pin mapper</title>
+<style>
+  :root{
+    --bg:#0a0e13; --panel:#11161d; --panel2:#151c25; --line:#232c38;
+    --fg:#d8e2ee; --muted:#8b97a8; --accent:#22d3ee;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{
+    background:var(--bg); color:var(--fg);
+    font:13px/1.45 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+    overflow:hidden;
+  }
+  #app{display:grid;grid-template-columns:286px 1fr 348px;height:100vh}
+  .panel{background:var(--panel);border-right:1px solid var(--line);overflow-y:auto;padding:10px}
+  #right{border-right:0;border-left:1px solid var(--line)}
+  h1{font-size:21px;line-height:1.15;margin:0 0 3px;letter-spacing:.3px;font-weight:650}
+  h1 span{color:var(--accent)}
+  h2{font-size:12px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin:18px 0 7px}
+  section{border-top:1px solid var(--line);padding-top:2px}
+  section:first-of-type{border-top:0}
+  .hint{color:var(--muted);font-size:12px;margin:4px 0}
+  input,select,button,textarea{font:inherit;color:var(--fg);background:var(--panel2);
+    border:1px solid var(--line);border-radius:5px;padding:3px 6px;outline:none}
+  input:focus,select:focus,textarea:focus{border-color:var(--accent)}
+  input[type=range]{padding:0;border:0;background:none;width:100%;accent-color:var(--accent)}
+  input[type=color]{padding:0;width:24px;height:22px;border-radius:4px}
+  input[type=checkbox]{accent-color:var(--accent);vertical-align:-2px}
+  button{cursor:pointer;background:var(--panel2)}
+  button:hover{border-color:var(--accent)}
+  button.on{background:var(--accent);color:#04141a;border-color:var(--accent);font-weight:600}
+  .row{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:6px 0}
+  label{display:block}
+  .btn{display:inline-flex;align-items:center;gap:4px;cursor:pointer;
+    background:var(--panel2);border:1px solid var(--line);border-radius:5px;padding:3px 8px;font-size:12px}
+  .btn:hover{border-color:var(--accent)}
+  .btn input{display:none}
+  .btn.small{font-size:12px;padding:2px 7px}
+  .card{background:var(--panel2);border:1px solid var(--line);border-radius:7px;padding:7px;margin-bottom:7px}
+  .card.active{border-color:var(--accent);box-shadow:0 0 0 1px #22d3ee33}
+  .cardhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}
+  .cardhead b{font-size:12px}
+  .filerow{display:flex;gap:6px;align-items:center;margin-bottom:4px}
+  .fname{font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+  .sl{font-size:12px;color:var(--muted);margin-top:4px}
+  .sl [data-v]{color:var(--fg);float:right;font-variant-numeric:tabular-nums}
+  .mini-chk{font-size:12px;color:var(--muted);display:inline-flex;gap:4px;align-items:center}
+  #stage{position:relative;overflow:hidden;background:#0a0e13}
+  #cv{display:block;width:100%;height:100%;cursor:crosshair;touch-action:none}
+  #toolbar{position:absolute;left:12px;top:12px;display:flex;gap:5px;align-items:center;
+    background:#11161de6;border:1px solid var(--line);border-radius:8px;padding:5px 7px;backdrop-filter:blur(6px)}
+  #toolbar .sep{width:1px;height:18px;background:var(--line);margin:0 3px}
+  #toolbar label{font-size:12px;color:var(--muted);display:flex;gap:4px;align-items:center}
+  .list{max-height:230px;overflow-y:auto;border:1px solid var(--line);border-radius:6px}
+  .pinrow{display:flex;gap:6px;align-items:center;padding:2px 5px;border-bottom:1px solid #1b232e;cursor:pointer}
+  .pinrow:hover{background:#1a2430}
+  .pinrow.linked{background:#22d3ee14;box-shadow:inset 2px 0 0 currentColor}
+  .pinrow .pill{flex:0 0 28px;text-align:right;font-variant-numeric:tabular-nums;color:var(--muted);font-size:12px}
+  .pinrow .mini{flex:0 0 76px;font-size:12px;padding:1px 5px}
+  .pinrow .fn{flex:1;min-width:0;font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .padrow{display:flex;gap:5px;align-items:center;padding:2px 5px;border-bottom:1px solid #1b232e}
+  .padrow.sel{background:#22d3ee14}
+  .padrow .pill{flex:0 0 auto;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+  .padrow .mini{min-width:0;font-size:12px;padding:1px 5px}
+  .padrow .del{flex:0 0 auto;padding:0 6px;line-height:18px;color:var(--muted)}
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  th,td{text-align:left;padding:2px 5px;border-bottom:1px solid #1b232e;white-space:nowrap}
+  th{color:var(--muted);font-weight:500;position:sticky;top:0;background:var(--panel)}
+  td.sel{outline:1px solid var(--accent)}
+  .tablewrap{max-height:260px;overflow:auto;border:1px solid var(--line);border-radius:6px}
+  .empty{color:var(--muted);font-size:12px;padding:8px;text-align:center}
+  kbd{background:#1b232e;border:1px solid var(--line);border-radius:3px;padding:0 4px;font-size:12px}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <aside id="left" class="panel">
+    <h1>Board<span>Explorer</span></h1>
+    <p class="hint">PCB pad → MCU pin mapper</p>
+
+    <section>
+      <h2>Layers</h2>
+      <div id="layerCards"></div>
+      <label class="mini-chk" style="margin-top:2px">
+        <input type="checkbox" id="mirrorBack" checked> mirror back (view through board)
+      </label>
+    </section>
+
+    <section>
+      <h2>Guides</h2>
+      <div class="row">
+        <label class="mini-chk"><input type="checkbox" id="gGrid" checked> grid</label>
+        <label class="mini-chk"><input type="checkbox" id="gCross" checked> cross</label>
+        <label class="mini-chk"><input type="checkbox" id="gRulers" checked> rulers</label>
+        <label class="mini-chk"><input type="checkbox" id="gPin1" checked> pin 1</label>
+        <label class="mini-chk"><input type="checkbox" id="gOutline" checked> mcu</label>
+      </div>
+    </section>
+
+    <section>
+      <h2>View</h2>
+      <div class="row">
+        <button id="fit">Fit</button>
+        <button id="zoom1">1:1</button>
+        <span class="hint" id="zoomLbl">100%</span>
+      </div>
+    </section>
+
+    <section>
+      <h2>Session</h2>
+      <input id="projName" placeholder="project name" style="width:100%;margin-bottom:6px" aria-label="project name">
+      <div class="row">
+        <button id="saveJSON">Save project</button>
+        <label class="btn">Open project<input type="file" id="loadJSON" accept=".json,application/json"></label>
+      </div>
+      <div class="row">
+        <button id="savePNG">Export PNG</button>
+        <button id="saveCSV">Export CSV</button>
+      </div>
+      <p class="hint" id="status">—</p>
+    </section>
+
+    <section>
+      <h2>Keys</h2>
+      <p class="hint">
+        <kbd>Z</kbd> zoom toggle · <kbd>R</kbd> rotate +1° · <kbd>Shift</kbd>+<kbd>R</kbd> −1°<br>
+        <kbd>←↑↓→</kbd> nudge pad (<kbd>Shift</kbd> ×10) · <kbd>Del</kbd> delete<br>
+        <kbd>F</kbd> fit · <kbd>Esc</kbd> deselect · wheel = zoom<br>
+        <kbd>Alt</kbd>+drag = move the active layer
+      </p>
+    </section>
+  </aside>
+
+  <main id="stage">
+    <canvas id="cv"></canvas>
+    <div id="toolbar">
+      <button data-tool="pan" class="on">✋ Pan</button>
+      <button data-tool="pad">⊕ Pad</button>
+      <button data-tool="mcu">▣ MCU</button>
+      <span class="sep"></span>
+      <label>side
+        <select id="padSide"><option value="front">front</option><option value="back">back</option></select>
+      </label>
+      <span class="sep"></span>
+      <span class="hint" id="coords">–</span>
+    </div>
+  </main>
+
+  <aside id="right" class="panel">
+    <section>
+      <h2>MCU</h2>
+      <label class="sl">name<input id="mcuName" placeholder="EFR32FG22C121"></label>
+      <div class="row">
+        <label class="sl" style="flex:1">package
+          <select id="mcuPkg" style="width:100%">
+            <option value="QFN32">QFN32</option>
+            <option value="QFN40">QFN40</option>
+            <option value="QFN48">QFN48</option>
+            <option value="QFN64">QFN64</option>
+            <option value="custom">custom</option>
+          </select>
+        </label>
+        <label class="sl" style="width:68px">pins
+          <input type="number" id="mcuN" min="1" max="256" step="1" value="32" style="width:100%">
+        </label>
+      </div>
+      <div class="row">
+        <label class="sl">W<input type="number" id="mcuW" value="220" style="width:58px"></label>
+        <label class="sl">H<input type="number" id="mcuH" value="220" style="width:58px"></label>
+        <label class="sl">rot<input type="number" id="mcuRot" value="0" step="1" style="width:58px"></label>
+      </div>
+      <label class="sl">pinout table — one <code>pin#,name,function</code> per line
+        <textarea id="mcuCsv" rows="3" style="width:100%;resize:vertical"
+          placeholder="1,PA0,GPIO&#10;2,PA1,SWCLK"></textarea>
+      </label>
+      <div class="row"><button id="mcuApply">Apply table</button></div>
+    </section>
+
+    <section>
+      <h2>Pins <span class="hint" id="pinHint">pick a pad, then a pin</span></h2>
+      <div class="list" id="pinList"></div>
+    </section>
+
+    <section>
+      <h2>Pads</h2>
+      <div class="list" id="padList"></div>
+    </section>
+
+    <section>
+      <h2>Mapping</h2>
+      <div class="tablewrap"><table id="linkTable"></table></div>
+    </section>
+  </aside>
+</div>
+
+<script>
+(() => {
+'use strict';
+
+/* ------------------------------------------------------------------ utils */
+const $ = (s, r = document) => r.querySelector(s);
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const num = (v, d = 0) => Number.isFinite(+v) ? +v : d;
+const rad = d => d * Math.PI / 180;
+
+/* ------------------------------------------------------------------ state */
+const mkLayer = id => ({ id, src: null, img: null, name: '', x: 0, y: 0, scale: 1, rot: 0,
+  flipH: false, flipV: false, opacity: 1, blend: 'source-over', visible: true });
+
+const S = {
+  project: 'untitled',
+  layers: { front: mkLayer('front'), back: mkLayer('back'), close: mkLayer('close') },
+  active: 'front',
+  mirrorBack: true,
+  pads: [], nextId: 1, selectedPad: null, padSide: 'front',
+  mcu: { name: '', n: 32, x: 0, y: 0, w: 220, h: 220, rot: 0, pins: [] },
+  links: [],
+  view: { zoom: 1, tx: 0, ty: 0 },
+  tool: 'pan',
+  pin1: { x: -150, y: -150, on: true },
+  guides: { grid: true, cross: true, rulers: true, pin1: true, outline: true },
+};
+
+/* ----------------------------------------------------------------- canvas */
+const cv = $('#cv'), ctx = cv.getContext('2d');
+let VIEW_INIT = false;
+
+const toWorld = e => {
+  const r = cv.getBoundingClientRect();
+  return { x: (e.clientX - r.left - S.view.tx) / S.view.zoom, y: (e.clientY - r.top - S.view.ty) / S.view.zoom };
+};
+
+function niceStep(min) {
+  const p = Math.pow(10, Math.floor(Math.log10(Math.max(min, 1e-3))));
+  for (const m of [1, 2, 2.5, 5, 10]) if (p * m >= min) return p * m;
+  return p * 10;
+}
+
+/* --------------------------------------------------------------- pin model */
+function pinLayout(m) {
+  const N = m.n | 0, out = [];
+  if (N <= 0) return out;
+  const { w, h } = m;
+  if (N % 4 === 0) {
+    const per = N / 4;
+    // QFN: counter-clockwise from pin 1 at the top of the left edge
+    for (let i = 0; i < per; i++) out.push({ n: i + 1, x: -w / 2, y: -h / 2 + (i + .5) * h / per, side: 'left' });
+    for (let i = 0; i < per; i++) out.push({ n: per + i + 1, x: -w / 2 + (i + .5) * w / per, y: h / 2, side: 'bottom' });
+    for (let i = 0; i < per; i++) out.push({ n: 2 * per + i + 1, x: w / 2, y: h / 2 - (i + .5) * h / per, side: 'right' });
+    for (let i = 0; i < per; i++) out.push({ n: 3 * per + i + 1, x: w / 2 - (i + .5) * w / per, y: -h / 2, side: 'top' });
+  } else { // not a multiple of 4 → circular ring
+    const r = Math.max(w, h) / 2;
+    for (let i = 0; i < N; i++) {
+      const a = -Math.PI / 2 + i * 2 * Math.PI / N;
+      out.push({ n: i + 1, x: Math.cos(a) * r, y: Math.sin(a) * r, side: 'ring' });
+    }
+  }
+  return out;
+}
+const xf = (m, p) => {
+  const a = rad(m.rot), c = Math.cos(a), s = Math.sin(a);
+  return { x: m.x + p.x * c - p.y * s, y: m.y + p.x * s + p.y * c };
+};
+const pinWorld = n => { const p = pinLayout(S.mcu).find(q => q.n === n); return p ? xf(S.mcu, p) : null; };
+
+function ensurePins() {
+  const n = clamp(S.mcu.n | 0, 1, 256);
+  S.mcu.n = n;
+  const old = S.mcu.pins || [];
+  S.mcu.pins = Array.from({ length: n }, (_, i) => old[i] || { name: 'P' + (i + 1), fn: '' });
+}
+
+const linkOf = padId => S.links.find(l => l.pad === padId) || null;
+
+function addLink(padId, pinN) {
+  S.links = S.links.filter(l => l.pad !== padId);
+  S.links.push({ pad: padId, pin: pinN | 0, note: 'unknown' });
+  renderTables(); render(); saveLocal();
+}
+
+/* ---------------------------------------------------------------- drawing */
+function drawLayers(g) {
+  for (const id of ['back', 'front', 'close']) {
+    const L = S.layers[id];
+    if (!L.img || !L.visible) continue;
+    const mirror = id === 'back' && S.mirrorBack ? -1 : 1;
+    g.save();
+    g.globalAlpha = L.opacity;
+    g.globalCompositeOperation = L.blend;
+    g.translate(L.x, L.y);
+    g.rotate(rad(L.rot));
+    g.scale(L.scale * (L.flipH ? -1 : 1) * mirror, L.scale * (L.flipV ? -1 : 1));
+    g.drawImage(L.img, -L.img.width / 2, -L.img.height / 2);
+    g.restore();
+  }
+}
+
+function drawGrid(g, W, H, z, tx, ty) {
+  const step = niceStep(70 / z);
+  const x0 = Math.floor((0 - tx) / z / step) * step, x1 = (W - tx) / z;
+  const y0 = Math.floor((0 - ty) / z / step) * step, y1 = (H - ty) / z;
+  g.save();
+  g.lineWidth = 1 / z; g.strokeStyle = '#1b2531';
+  g.beginPath();
+  for (let x = x0; x <= x1; x += step) { g.moveTo(x, (0 - ty) / z); g.lineTo(x, y1); }
+  for (let y = y0; y <= y1; y += step) { g.moveTo((0 - tx) / z, y); g.lineTo(x1, y); }
+  g.stroke();
+  g.restore();
+}
+
+function drawCross(g, W, H, z, tx, ty) {
+  g.save();
+  g.strokeStyle = '#3a4a5e'; g.lineWidth = 1 / z; g.setLineDash([6 / z, 6 / z]);
+  g.beginPath(); g.moveTo(0, (-ty) / z); g.lineTo(0, (H - ty) / z);
+  g.moveTo((-tx) / z, 0); g.lineTo((W - tx) / z, 0); g.stroke();
+  g.restore();
+}
+
+function drawMcu(g) {
+  const m = S.mcu, z = S.view.zoom;
+  if (!S.guides.outline) return;
+  g.save();
+  g.translate(m.x, m.y); g.rotate(rad(m.rot));
+  g.lineWidth = 2 / z; g.strokeStyle = '#f59e0b'; g.setLineDash([]);
+  g.strokeRect(-m.w / 2, -m.h / 2, m.w, m.h);
+
+  g.fillStyle = '#f59e0b';
+  g.beginPath(); g.arc(-m.w / 2 + 12 / z, -m.h / 2 + 12 / z, 3.5 / z, 0, 7); g.fill();
+
+  const linkedPins = new Map();
+  for (const l of S.links) {
+    const p = S.pads.find(p => p.id === l.pad);
+    if (p) linkedPins.set(l.pin, p.color);
+  }
+
+  const pins = pinLayout(m), len = 13 / z, th = 7 / z;
+  g.font = `${clamp(9 / z, 6, 20)}px ui-monospace,monospace`;
+  g.textAlign = 'center'; g.textBaseline = 'middle';
+  for (const p of pins) {
+    const col = linkedPins.get(p.n);
+    g.strokeStyle = col || '#8b6b1f'; g.fillStyle = col || '#2b2313';
+    g.lineWidth = 1 / z;
+    let n, a, b;
+    if (p.side === 'left' || p.side === 'right') {
+      const sgn = p.side === 'left' ? -1 : 1;
+      a = { x: p.x, y: p.y - th / 2 }; b = { x: p.x + sgn * len, y: p.y + th / 2 };
+      n = { x: p.x + sgn * (len + 7 / z), y: p.y };
+    } else if (p.side === 'top' || p.side === 'bottom') {
+      const sgn = p.side === 'top' ? -1 : 1;
+      a = { x: p.x - th / 2, y: p.y }; b = { x: p.x + th / 2, y: p.y + sgn * len };
+      n = { x: p.x, y: p.y + sgn * (len + 7 / z) };
+    } else {
+      a = { x: p.x * 1.06, y: p.y * 1.06 }; b = { x: p.x * 1.12, y: p.y * 1.12 };
+      n = { x: p.x * 1.2, y: p.y * 1.2 };
+    }
+    if (col) { g.fillStyle = col + '55'; g.fillRect(a.x, a.y, b.x - a.x, b.y - a.y); }
+    g.beginPath(); g.rect(a.x, a.y, b.x - a.x, b.y - a.y); g.stroke();
+    g.fillStyle = col || '#a58a4a';
+    g.fillText(String(p.n), n.x, n.y);
+  }
+  // resize + rotate handles
+  g.strokeStyle = '#f59e0b'; g.lineWidth = 1.5 / z;
+  g.beginPath(); g.arc(m.w / 2, m.h / 2, 6 / z, 0, 7); g.stroke();
+  g.beginPath(); g.moveTo(0, -m.h / 2); g.lineTo(0, -m.h / 2 - 26 / z); g.stroke();
+  g.beginPath(); g.arc(0, -m.h / 2 - 26 / z, 5 / z, 0, 7); g.stroke();
+  g.restore();
+}
+
+function drawPads(g) {
+  const z = S.view.zoom, r = 11 / z;
+  g.save();
+  for (const p of S.pads) {
+    const sel = S.selectedPad === p.id;
+    g.beginPath(); g.arc(p.x, p.y, r, 0, 7);
+    g.fillStyle = p.color + '40'; g.fill();
+    if (p.side === 'back') g.setLineDash([3 / z, 3 / z]);
+    g.lineWidth = (sel ? 3 : 1.6) / z;
+    g.strokeStyle = sel ? '#ffffff' : p.color;
+    g.stroke();
+    g.setLineDash([]);
+    g.fillStyle = p.color;
+    g.font = `${clamp(12 / z, 7, 30)}px ui-monospace,monospace`;
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText(String(p.id), p.x, p.y + .5 / z);
+    if (p.label) {
+      g.fillStyle = '#e6edf5';
+      g.font = `${clamp(11 / z, 7, 28)}px ui-sans-serif,system-ui`;
+      g.fillText(p.label, p.x, p.y + r + 9 / z);
+    }
+  }
+  g.restore();
+}
+
+function drawLinks(g) {
+  const z = S.view.zoom;
+  g.save();
+  g.lineWidth = 1.6 / z; g.setLineDash([5 / z, 4 / z]);
+  for (const l of S.links) {
+    const pad = S.pads.find(p => p.id === l.pad), pw = pinWorld(l.pin);
+    if (!pad || !pw) continue;
+    g.strokeStyle = pad.color;
+    g.beginPath(); g.moveTo(pad.x, pad.y); g.lineTo(pw.x, pw.y); g.stroke();
+  }
+  g.restore();
+}
+
+function drawPin1(g) {
+  const z = S.view.zoom, s = 9 / z;
+  g.save();
+  g.translate(S.pin1.x, S.pin1.y);
+  g.beginPath(); g.moveTo(0, 0); g.lineTo(-s, -s * 1.6); g.lineTo(s, -s * 1.6); g.closePath();
+  g.fillStyle = '#ff5d5d'; g.fill();
+  g.strokeStyle = '#fff'; g.lineWidth = 1.2 / z; g.stroke();
+  g.fillStyle = '#fff'; g.font = `bold ${clamp(10 / z, 7, 26)}px ui-monospace,monospace`;
+  g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText('1', 0, -s * .85);
+  g.restore();
+}
+
+function drawRulers(g, W, H, z, tx, ty) {
+  const step = niceStep(90 / z);
+  g.save();
+  g.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+  g.fillStyle = '#0b1119'; g.fillRect(0, 0, W, 15); g.fillRect(0, 0, 15, H);
+  g.strokeStyle = '#243040'; g.beginPath();
+  g.moveTo(0, 15.5); g.lineTo(W, 15.5); g.moveTo(15.5, 0); g.lineTo(15.5, H); g.stroke();
+  g.font = '10px ui-monospace,monospace'; g.fillStyle = '#8b97a8';
+  g.textBaseline = 'top'; g.textAlign = 'left';
+  for (let x = Math.floor((0 - tx) / z / step) * step; ; x += step) {
+    const sx = x * z + tx;
+    if (sx > W) break; if (sx < 0) continue;
+    g.beginPath(); g.moveTo(sx + .5, 11); g.lineTo(sx + .5, 15); g.stroke();
+    g.fillText(String(Math.round(x)), sx + 2, 1.5);
+  }
+  for (let y = Math.floor((0 - ty) / z / step) * step; ; y += step) {
+    const sy = y * z + ty;
+    if (sy > H) break; if (sy < 0) continue;
+    g.beginPath(); g.moveTo(11, sy + .5); g.lineTo(15, sy + .5); g.stroke();
+    g.save(); g.translate(1.5, sy + 2); g.rotate(Math.PI / 2); g.textBaseline = 'bottom';
+    g.fillText(String(Math.round(y)), 0, 0); g.restore();
+  }
+  g.restore();
+}
+
+function paint(g, W, H, dpr, z, tx, ty, guides) {
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.fillStyle = '#0a0e13'; g.fillRect(0, 0, W, H);
+  g.save();
+  g.setTransform(dpr * z, 0, 0, dpr * z, dpr * tx, dpr * ty);
+  if (guides && S.guides.grid) drawGrid(g, W, H, z, tx, ty);
+  drawLayers(g);
+  drawLinks(g);
+  drawMcu(g);
+  drawPads(g);
+  if (guides && S.guides.pin1 && S.pin1.on) drawPin1(g);
+  if (guides && S.guides.cross) drawCross(g, W, H, z, tx, ty);
+  g.restore();
+  if (guides && S.guides.rulers) drawRulers(g, W, H, z, tx, ty);
+
+  const empty = !Object.values(S.layers).some(l => l.img && l.visible);
+  if (empty && guides) {
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.fillStyle = '#5b6b7f'; g.font = '15px ui-sans-serif,system-ui';
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText('Load the front photo to start', W / 2, H / 2 - 16);
+    g.fillStyle = '#3d4b5b'; g.font = '12px ui-sans-serif,system-ui';
+    g.fillText('then the back photo → “mirror back” → align vias with the difference blend', W / 2, H / 2 + 12);
+  }
+}
+
+function render() {
+  const dpr = devicePixelRatio || 1;
+  const W = cv.clientWidth, H = cv.clientHeight;
+  if (!W || !H) return;
+  if (!VIEW_INIT) { S.view.tx = W / 2; S.view.ty = H / 2; VIEW_INIT = true; }
+  if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) {
+    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+  }
+  paint(ctx, W, H, dpr, S.view.zoom, S.view.tx, S.view.ty, true);
+  $('#zoomLbl').textContent = Math.round(S.view.zoom * 100) + '%';
+}
+
+/* ---------------------------------------------------------------- fit view */
+function fitView() {
+  const pts = [];
+  for (const l of Object.values(S.layers)) {
+    if (!l.img || !l.visible) continue;
+    const hw = l.img.width / 2 * l.scale, hh = l.img.height / 2 * l.scale, a = rad(l.rot);
+    for (const [sx, sy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
+      const px = sx * hw, py = sy * hh;
+      pts.push({ x: l.x + px * Math.cos(a) - py * Math.sin(a), y: l.y + px * Math.sin(a) + py * Math.cos(a) });
+    }
+  }
+  const W = cv.clientWidth || 800, H = cv.clientHeight || 600;
+  if (!pts.length) { S.view = { zoom: 1, tx: W / 2, ty: H / 2 }; render(); return; }
+  const minx = Math.min(...pts.map(p => p.x)), maxx = Math.max(...pts.map(p => p.x));
+  const miny = Math.min(...pts.map(p => p.y)), maxy = Math.max(...pts.map(p => p.y));
+  const z = Math.min((W - 60) / Math.max(maxx - minx, 1), (H - 60) / Math.max(maxy - miny, 1));
+  S.view.zoom = clamp(z, .02, 40);
+  S.view.tx = W / 2 - (minx + maxx) / 2 * S.view.zoom;
+  S.view.ty = H / 2 - (miny + maxy) / 2 * S.view.zoom;
+  render();
+}
+
+/* ------------------------------------------------------------------ images */
+// Any format the browser can decode works directly (PNG/JPEG/WebP/GIF/AVIF/BMP...).
+// Camera RAW (DNG/CR2/NEF/ARW/ORF/RAF/RW2) + TIFF/HEIC aren't decodable by canvas,
+// but almost all embed a full-size JPEG preview — pull that out and decode it.
+const RAW_EXT = /\.(dng|cr2|cr3|nef|arw|orf|raf|rw2|raw|sr2|srw|pef|3fr|erf|kdc|mrw|x3f|tif|tiff|heic|heif)$/i;
+
+// Scan a JPEG segment stream for the largest SOI..EOI span (the embedded preview).
+function extractJpegPreview(buf) {
+  const u8 = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
+  let best = null;
+  for (let i = 0; i + 3 < u8.length; i++) {
+    if (u8[i] !== 0xFF || u8[i + 1] !== 0xD8 || u8[i + 2] !== 0xFF) continue;
+    // walk segments to find this stream's EOI
+    let j = i + 2, end = -1;
+    while (j + 4 < u8.length) {
+      if (u8[j] !== 0xFF) { j++; continue; }
+      const m = u8[j + 1];
+      if (m === 0xD9) { end = j + 2; break; }
+      if (m === 0xDA) { // start of scan: skip entropy-coded data to next non-stuffed marker
+        j += 2;
+        while (j + 1 < u8.length) {
+          if (u8[j] === 0xFF && u8[j + 1] !== 0x00 && !(u8[j + 1] >= 0xD0 && u8[j + 1] <= 0xD7)) {
+            if (u8[j + 1] === 0xD9) { end = j + 2; }
+            break;
+          }
+          j++;
+        }
+        if (end > 0) break;
+        continue;
+      }
+      if (m === 0x01 || (m >= 0xD0 && m <= 0xD8)) { j += 2; continue; }
+      const len = (u8[j + 2] << 8) | u8[j + 3];
+      if (len < 2) { j++; continue; }
+      j += 2 + len;
+    }
+    if (end > 0 && (!best || end - i > best.end - best.start)) best = { start: i, end };
+    i = end > 0 ? end - 1 : i;
+  }
+  return best ? u8.subarray(best.start, best.end) : null;
+}
+
+// Decode any image file → data URL. Throws with a useful message if truly unsupported.
+async function decodeImageFile(file) {
+  const looksRaw = RAW_EXT.test(file.name) || /^(image\/(tiff|heic|heif|x-canonraw|x-nikonraw|x-sonyraw))$/.test(file.type);
+  // 1) let the browser try (covers png/jpg/webp/gif/avif/bmp/svg and any future codec)
+  try {
+    const url = URL.createObjectURL(file);
+    try {
+      const img = await new Promise((res, rej) => {
+        const i = new Image();
+        i.onload = () => res(i); i.onerror = () => rej(new Error('decode'));
+        i.src = url;
+      });
+      URL.revokeObjectURL(url);
+      // re-encode to PNG so canvas/EXIF orientation is baked in and the session is portable
+      const c = document.createElement('canvas');
+      c.width = img.naturalWidth; c.height = img.naturalHeight;
+      c.getContext('2d').drawImage(img, 0, 0);
+      return { src: c.toDataURL('image/png'), w: c.width, h: c.height, note: '' };
+    } catch { URL.revokeObjectURL(url); }
+  } catch { /* fall through */ }
+
+  // 2) RAW/TIFF/HEIC: extract the embedded JPEG preview
+  if (looksRaw) {
+    const u8 = new Uint8Array(await file.arrayBuffer());
+    const jpeg = extractJpegPreview(u8);
+    if (jpeg) {
+      const blob = new Blob([jpeg], { type: 'image/jpeg' });
+      const url = URL.createObjectURL(blob);
+      const img = await new Promise((res, rej) => {
+        const i = new Image();
+        i.onload = () => res(i); i.onerror = () => rej(new Error('preview decode'));
+        i.src = url;
+      });
+      URL.revokeObjectURL(url);
+      const c = document.createElement('canvas');
+      c.width = img.naturalWidth; c.height = img.naturalHeight;
+      c.getContext('2d').drawImage(img, 0, 0);
+      return { src: c.toDataURL('image/png'), w: c.width, h: c.height,
+        note: `RAW preview ${c.width}×${c.height}` };
+    }
+    throw new Error('no embedded preview found — export a JPEG/TIFF from your RAW converter');
+  }
+  throw new Error('this browser cannot decode that format — use PNG/JPEG/WebP');
+}
+
+async function loadFile(file, layerId) {
+  const out = await decodeImageFile(file);
+  await setLayerSrc(layerId, out.src, file.name);
+  if (out.note) status(`${file.name}: ${out.note}`);
+  return out;
+}
+
+function setLayerSrc(layerId, src, name) {
+  return new Promise((res, rej) => {
+    const img = new Image();
+    img.onload = () => {
+      const L = S.layers[layerId], first = !L.img;
+      L.img = img; L.src = src; L.name = name || L.name; L.visible = true;
+      if (first) {
+        L.x = 0; L.y = 0; L.scale = 1; L.rot = 0; L.flipH = false; L.flipV = false;
+        L.opacity = layerId === 'close' ? 1 : .8;
+      }
+      syncCards(); fitView(); saveLocal(); res();
+    };
+    img.onerror = () => rej(new Error('image decode failed'));
+    img.src = src;
+  });
+}
+
+/* ------------------------------------------------------------------- cards */
+const LAYER_META = { front: 'Front photo', back: 'Back photo', close: 'Close-up / label' };
+
+function buildCards() {
+  const host = $('#layerCards');
+  host.innerHTML = '';
+  for (const id of ['front', 'back', 'close']) {
+    const L = S.layers[id];
+    const el = document.createElement('div');
+    el.className = 'card' + (S.active === id ? ' active' : '');
+    el.dataset.layer = id;
+    el.innerHTML = `
+      <div class="cardhead"><b>${LAYER_META[id]}</b>
+        <label class="mini-chk"><input type="checkbox" data-k="visible" ${L.visible ? 'checked' : ''}> on</label>
+      </div>
+      <div class="filerow">
+        <label class="btn small">Load<input type="file" accept="image/*,.dng,.cr2,.cr3,.nef,.arw,.orf,.raf,.rw2,.raw,.tif,.tiff,.heic,.heif" data-file></label>
+        <span class="fname">${esc(L.name || '—')}</span>
+      </div>
+      <label class="sl">scale <span data-v="scale">${L.scale.toFixed(2)}</span>
+        <input type="range" data-k="scale" min="0.05" max="8" step="0.01" value="${L.scale}"></label>
+      <label class="sl">rotate <span data-v="rot">${L.rot.toFixed(1)}°</span>
+        <input type="range" data-k="rot" min="-180" max="180" step="0.5" value="${L.rot}"></label>
+      <label class="sl">opacity <span data-v="opacity">${Math.round(L.opacity * 100)}%</span>
+        <input type="range" data-k="opacity" min="0" max="1" step="0.01" value="${L.opacity}"></label>
+      <div class="row" style="margin:5px 0 0">
+        <label class="mini-chk"><input type="checkbox" data-k="flipH" ${L.flipH ? 'checked' : ''}>flip H</label>
+        <label class="mini-chk"><input type="checkbox" data-k="flipV" ${L.flipV ? 'checked' : ''}>flip V</label>
+        <select data-k="blend" style="margin-left:auto;font-size:12px">
+          <option value="source-over">normal</option>
+          <option value="multiply">multiply</option>
+          <option value="difference">difference</option>
+        </select>
+      </div>`;
+    el.querySelector('select[data-k=blend]').value = L.blend;
+    host.appendChild(el);
+  }
+}
+
+const fmtVal = (L, k) => k === 'scale' ? L.scale.toFixed(2)
+  : k === 'rot' ? L.rot.toFixed(1) + '°' : Math.round(L.opacity * 100) + '%';
+
+function syncCards() {
+  for (const card of document.querySelectorAll('#layerCards .card')) {
+    const L = S.layers[card.dataset.layer];
+    card.classList.toggle('active', S.active === card.dataset.layer);
+    card.querySelector('.fname').textContent = L.name || '—';
+    for (const inp of card.querySelectorAll('[data-k]')) {
+      const k = inp.dataset.k;
+      if (inp.type === 'checkbox') inp.checked = !!L[k]; else inp.value = L[k];
+      const out = card.querySelector(`[data-v="${k}"]`);
+      if (out) out.textContent = fmtVal(L, k);
+    }
+    card.querySelector('select[data-k=blend]').value = L.blend;
+  }
+}
+
+$('#layerCards').addEventListener('input', e => {
+  const card = e.target.closest('[data-layer]'); if (!card) return;
+  const L = S.layers[card.dataset.layer], k = e.target.dataset.k; if (!k) return;
+  if (k === 'visible' || k === 'flipH' || k === 'flipV') L[k] = e.target.checked;
+  else if (k === 'blend') L.blend = e.target.value;
+  else L[k] = num(e.target.value, L[k]);
+  const out = card.querySelector(`[data-v="${k}"]`);
+  if (out) out.textContent = fmtVal(L, k);
+  render(); saveLocal();
+});
+$('#layerCards').addEventListener('change', e => {
+  if (!e.target.matches('input[type=file]')) return;
+  const card = e.target.closest('[data-layer]'), f = e.target.files[0];
+  if (f && card) loadFile(f, card.dataset.layer).catch(err => status('load failed: ' + err.message));
+});
+$('#layerCards').addEventListener('pointerdown', e => {
+  const card = e.target.closest('[data-layer]');
+  if (!card || e.target.closest('input,select,label')) return;
+  S.active = card.dataset.layer; syncCards();
+});
+
+/* -------------------------------------------------------------- tools / ui */
+document.querySelectorAll('#toolbar [data-tool]').forEach(b => {
+  b.addEventListener('click', () => {
+    S.tool = b.dataset.tool;
+    document.querySelectorAll('#toolbar [data-tool]').forEach(x => x.classList.toggle('on', x === b));
+    cv.style.cursor = S.tool === 'pan' ? 'grab' : S.tool === 'pad' ? 'crosshair' : 'move';
+  });
+});
+$('#padSide').addEventListener('change', e => S.padSide = e.target.value);
+$('#mirrorBack').addEventListener('change', e => { S.mirrorBack = e.target.checked; render(); saveLocal(); });
+const bindGuide = (sel, key) => $(sel).addEventListener('change', e => { S.guides[key] = e.target.checked; render(); saveLocal(); });
+bindGuide('#gGrid', 'grid'); bindGuide('#gCross', 'cross'); bindGuide('#gRulers', 'rulers');
+bindGuide('#gPin1', 'pin1'); bindGuide('#gOutline', 'outline');
+$('#fit').addEventListener('click', fitView);
+$('#zoom1').addEventListener('click', () => {
+  const W = cv.clientWidth / 2, H = cv.clientHeight / 2;
+  const w = { x: (W - S.view.tx) / S.view.zoom, y: (H - S.view.ty) / S.view.zoom };
+  S.view.zoom = 1; S.view.tx = W - w.x; S.view.ty = H - w.y; render();
+});
+
+/* --------------------------------------------------------------- MCU inputs */
+const mcuSync = () => { renderTables(); render(); saveLocal(); };
+$('#mcuPkg').addEventListener('change', e => {
+  const v = e.target.value;
+  if (v !== 'custom') { S.mcu.n = +v.replace(/\D/g, ''); $('#mcuN').value = S.mcu.n; ensurePins(); mcuSync(); }
+});
+$('#mcuN').addEventListener('change', e => {
+  S.mcu.n = clamp(num(e.target.value, 32) | 0, 1, 256);
+  $('#mcuN').value = S.mcu.n; ensurePins(); mcuSync();
+});
+$('#mcuName').addEventListener('input', e => { S.mcu.name = e.target.value; saveLocal(); });
+$('#mcuW').addEventListener('input', e => { S.mcu.w = Math.max(10, num(e.target.value, 220)); render(); saveLocal(); });
+$('#mcuH').addEventListener('input', e => { S.mcu.h = Math.max(10, num(e.target.value, 220)); render(); saveLocal(); });
+$('#mcuRot').addEventListener('input', e => { S.mcu.rot = num(e.target.value, 0); render(); saveLocal(); });
+$('#mcuApply').addEventListener('click', () => {
+  parsePinCsv($('#mcuCsv').value); mcuSync(); status('pin table applied');
+});
+
+function parsePinCsv(text) {
+  const rows = String(text || '').split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  if (!rows.length) return;
+  const parsed = [];
+  for (const line of rows) {
+    const parts = line.split(/[,;\t]/).map(s => s.trim());
+    const n = parseInt(parts[0], 10);
+    if (!Number.isFinite(n) || n < 1) continue;
+    parsed.push({ n, name: parts[1] || '', fn: parts.slice(2).join(' ').trim() });
+  }
+  if (!parsed.length) return;
+  const maxN = Math.max(...parsed.map(p => p.n));
+  if (maxN > S.mcu.n) { S.mcu.n = maxN; $('#mcuN').value = maxN; ensurePins(); }
+  for (const p of parsed) {
+    const pin = S.mcu.pins[p.n - 1];
+    if (pin) { if (p.name) pin.name = p.name; pin.fn = p.fn; }
+  }
+}
+
+/* ------------------------------------------------------------ canvas input */
+let drag = null;
+
+function hitPad(w) {
+  const r = 14 / S.view.zoom;
+  let best = null, bd = r;
+  for (const p of S.pads) { const d = Math.hypot(p.x - w.x, p.y - w.y); if (d < bd) { bd = d; best = p; } }
+  return best;
+}
+function hitPin(w) {
+  const r = 13 / S.view.zoom;
+  let best = null, bd = r;
+  for (const p of pinLayout(S.mcu)) {
+    const q = xf(S.mcu, p), d = Math.hypot(q.x - w.x, q.y - w.y);
+    if (d < bd) { bd = d; best = p.n; }
+  }
+  return best;
+}
+function mcuLocal(w) {
+  const m = S.mcu, a = -rad(m.rot), c = Math.cos(a), s = Math.sin(a);
+  const dx = w.x - m.x, dy = w.y - m.y;
+  return { x: dx * c - dy * s, y: dx * s + dy * c };
+}
+function mcuHit(w) {
+  const m = S.mcu, t = 14 / S.view.zoom, l = mcuLocal(w);
+  if (Math.hypot(l.x, l.y + m.h / 2 + 26 / S.view.zoom) < t) return 'rot';
+  if (Math.hypot(l.x - m.w / 2, l.y - m.h / 2) < t) return 'resize';
+  if (Math.abs(l.x) < m.w / 2 && Math.abs(l.y) < m.h / 2) return 'move';
+  return null;
+}
+
+const PALETTE = ['#22d3ee', '#f472b6', '#a3e635', '#fbbf24', '#818cf8', '#fb7185'];
+function addPad(w) {
+  const p = { id: S.nextId++, side: S.padSide, label: '', notes: '',
+    color: PALETTE[S.pads.length % PALETTE.length], x: w.x, y: w.y };
+  S.pads.push(p); S.selectedPad = p.id;
+  renderTables(); render(); saveLocal();
+  return p;
+}
+function deletePad(id) {
+  S.pads = S.pads.filter(p => p.id !== id);
+  S.links = S.links.filter(l => l.pad !== id);
+  if (S.selectedPad === id) S.selectedPad = null;
+  renderTables(); render(); saveLocal();
+}
+
+cv.addEventListener('pointerdown', e => {
+  cv.setPointerCapture(e.pointerId);
+  const w = toWorld(e);
+
+  // Alt+drag moves the active layer (pan/scale/rotate are per-layer, so is position)
+  if (e.altKey) {
+    const L = S.layers[S.active];
+    drag = { type: 'layer', id: S.active, dx: w.x - L.x, dy: w.y - L.y };
+    return;
+  }
+  if (S.tool === 'pad' && !hitPad(w)) {
+    const p = addPad(w); drag = { type: 'pad', id: p.id, dx: 0, dy: 0 }; return;
+  }
+  const pad = hitPad(w);
+  if (pad) {
+    S.selectedPad = pad.id;
+    drag = { type: 'pad', id: pad.id, dx: w.x - pad.x, dy: w.y - pad.y };
+    renderTables(); render(); return;
+  }
+  if (S.guides.pin1 && S.pin1.on && Math.hypot(w.x - S.pin1.x, w.y - S.pin1.y) < 16 / S.view.zoom) {
+    drag = { type: 'pin1', dx: w.x - S.pin1.x, dy: w.y - S.pin1.y }; return;
+  }
+  if (S.selectedPad != null) {
+    const pin = hitPin(w);
+    if (pin) { addLink(S.selectedPad, pin); return; }
+  }
+  const mh = mcuHit(w);
+  if (mh === 'rot' || mh === 'resize') { drag = { type: 'mcu-' + mh }; return; }
+  if (mh === 'move') { drag = { type: 'mcu-move', dx: w.x - S.mcu.x, dy: w.y - S.mcu.y }; return; }
+
+  drag = { type: 'view', sx: e.clientX, sy: e.clientY, ox: S.view.tx, oy: S.view.ty };
+  cv.style.cursor = 'grabbing';
+});
+
+cv.addEventListener('pointermove', e => {
+  const w = toWorld(e);
+  $('#coords').textContent = `${Math.round(w.x)}, ${Math.round(w.y)} px`;
+  if (!drag) return;
+  if (drag.type === 'view') {
+    S.view.tx = drag.ox + (e.clientX - drag.sx);
+    S.view.ty = drag.oy + (e.clientY - drag.sy);
+  } else if (drag.type === 'pad') {
+    const p = S.pads.find(p => p.id === drag.id);
+    if (p) { p.x = w.x - drag.dx; p.y = w.y - drag.dy; }
+  } else if (drag.type === 'layer') {
+    const L = S.layers[drag.id];
+    if (L) { L.x = w.x - drag.dx; L.y = w.y - drag.dy; }
+  } else if (drag.type === 'pin1') {
+    S.pin1.x = w.x - drag.dx; S.pin1.y = w.y - drag.dy;
+  } else if (drag.type === 'mcu-move') {
+    S.mcu.x = w.x - drag.dx; S.mcu.y = w.y - drag.dy;
+  } else if (drag.type === 'mcu-rot') {
+    S.mcu.rot = Math.round(Math.atan2(w.y - S.mcu.y, w.x - S.mcu.x) * 180 / Math.PI + 90);
+    $('#mcuRot').value = S.mcu.rot;
+  } else if (drag.type === 'mcu-resize') {
+    const l = mcuLocal(w);
+    S.mcu.w = clamp(Math.round(Math.abs(l.x) * 2), 20, 4000);
+    S.mcu.h = clamp(Math.round(Math.abs(l.y) * 2), 20, 4000);
+    $('#mcuW').value = S.mcu.w; $('#mcuH').value = S.mcu.h;
+  }
+  render();
+});
+
+cv.addEventListener('pointerup', () => { drag = null; cv.style.cursor = S.tool === 'pan' ? 'grab' : 'crosshair'; saveLocal(); });
+cv.addEventListener('pointercancel', () => { drag = null; });
+
+cv.addEventListener('wheel', e => {
+  e.preventDefault();
+  const r = cv.getBoundingClientRect(), sx = e.clientX - r.left, sy = e.clientY - r.top;
+  const wx = (sx - S.view.tx) / S.view.zoom, wy = (sy - S.view.ty) / S.view.zoom;
+  S.view.zoom = clamp(S.view.zoom * Math.exp(-e.deltaY * 0.0015), .02, 60);
+  S.view.tx = sx - wx * S.view.zoom; S.view.ty = sy - wy * S.view.zoom;
+  render();
+}, { passive: false });
+
+cv.addEventListener('dblclick', e => {
+  const p = hitPad(toWorld(e));
+  if (!p) return;
+  const l = prompt('Pad label:', p.label);
+  if (l !== null) { p.label = l; renderTables(); render(); saveLocal(); }
+});
+
+/* ------------------------------------------------------------------ tables */
+function renderPins() {
+  const linked = new Map();
+  for (const l of S.links) {
+    const p = S.pads.find(p => p.id === l.pad);
+    if (p) linked.set(l.pin, p);
+  }
+  const frag = document.createDocumentFragment();
+  S.mcu.pins.forEach((pin, i) => {
+    const n = i + 1, pad = linked.get(n);
+    const row = document.createElement('div');
+    row.className = 'pinrow' + (pad ? ' linked' : '');
+    row.dataset.pin = n;
+    if (pad) row.style.color = pad.color;
+    row.innerHTML = `<span class="pill">${n}</span>
+      <input class="mini" data-pin="${n}" value="${esc(pin.name)}" aria-label="pin ${n} name">
+      <span class="fn" title="${esc(pin.fn)}">${esc(pin.fn || '')}${pad ? ' → pad ' + pad.id : ''}</span>`;
+    frag.appendChild(row);
+  });
+  const host = $('#pinList');
+  host.innerHTML = '';
+  host.appendChild(frag);
+}
+
+function renderPads() {
+  const host = $('#padList');
+  if (!S.pads.length) { host.innerHTML = '<div class="empty">No pads yet — press <b>⊕ Pad</b> and click the photo.</div>'; return; }
+  host.innerHTML = S.pads.map(p => `
+    <div class="padrow${S.selectedPad === p.id ? ' sel' : ''}" data-pad="${p.id}">
+      <span class="pill">#${p.id}</span>
+      <input class="mini" data-pad="${p.id}" data-f="label" value="${esc(p.label)}" placeholder="label" style="flex:1 1 40%" aria-label="pad ${p.id} label">
+      <input class="mini" data-pad="${p.id}" data-f="notes" value="${esc(p.notes)}" placeholder="note" style="flex:1 1 34%" aria-label="pad ${p.id} notes">
+      <select data-pad="${p.id}" data-f="side" style="font-size:12px" aria-label="pad ${p.id} side">
+        <option value="front">F</option><option value="back">B</option>
+      </select>
+      <input type="color" data-pad="${p.id}" data-f="color" value="${p.color}" aria-label="pad ${p.id} color">
+      <button class="del" data-del="${p.id}" title="delete pad ${p.id}">✕</button>
+    </div>`).join('');
+  for (const p of S.pads) {
+    const sel = host.querySelector(`select[data-pad="${p.id}"]`);
+    if (sel) sel.value = p.side;
+  }
+}
+
+const NOTES = ['unknown', 'GND', 'VDD', 'SWDIO', 'SWCLK', 'nRESET', 'VCC', 'other'];
+
+function renderLinks() {
+  let html = '<thead><tr><th>pad</th><th>side</th><th>label</th><th>pin</th><th>pin name</th><th>continuity</th><th></th></tr></thead><tbody>';
+  if (!S.pads.length) html += '<tr><td colspan="7" class="empty">no pads</td></tr>';
+  for (const p of S.pads) {
+    const l = linkOf(p.id), pin = l ? S.mcu.pins[l.pin - 1] : null;
+    html += `<tr${S.selectedPad === p.id ? ' class="sel"' : ''} data-rowpad="${p.id}">
+      <td style="color:${p.color}">#${p.id}</td>
+      <td>${p.side}</td>
+      <td>${esc(p.label || '')}</td>
+      <td>${l ? l.pin : '—'}</td>
+      <td>${pin ? esc(pin.name) + (pin.fn ? ' <span style="color:#8b97a8">' + esc(pin.fn) + '</span>' : '') : '—'}</td>
+      <td>${l ? `<select data-note="${p.id}" style="font-size:12px" aria-label="continuity for pad ${p.id}">${NOTES.map(n => `<option${n === l.note ? ' selected' : ''}>${n}</option>`).join('')}</select>` : '—'}</td>
+      <td>${l ? `<button data-unlink="${p.id}" title="unlink pad ${p.id}">✕</button>` : ''}</td>
+    </tr>`;
+  }
+  $('#linkTable').innerHTML = html + '</tbody>';
+}
+
+const renderTables = () => { renderPins(); renderPads(); renderLinks(); };
+
+$('#pinList').addEventListener('click', e => {
+  if (e.target.matches('input')) return;
+  const row = e.target.closest('[data-pin]'); if (!row) return;
+  if (S.selectedPad == null) { status('select a pad first'); return; }
+  addLink(S.selectedPad, +row.dataset.pin);
+});
+$('#pinList').addEventListener('input', e => {
+  const inp = e.target.closest('input[data-pin]'); if (!inp) return;
+  const pin = S.mcu.pins[+inp.dataset.pin - 1];
+  if (pin) { pin.name = inp.value; render(); saveLocal(); }
+});
+$('#padList').addEventListener('click', e => {
+  const del = e.target.closest('[data-del]');
+  if (del) { deletePad(+del.dataset.del); return; }
+  const row = e.target.closest('[data-pad]'); if (!row) return;
+  S.selectedPad = +row.dataset.pad;
+  renderTables(); render();
+});
+$('#padList').addEventListener('input', e => {
+  const el = e.target.closest('[data-pad]'); if (!el || !el.dataset.f) return;
+  const p = S.pads.find(p => p.id === +el.dataset.pad); if (!p) return;
+  p[el.dataset.f] = el.value; render(); saveLocal();
+});
+$('#padList').addEventListener('change', e => {
+  const el = e.target.closest('select[data-f=side]'); if (!el) return;
+  const p = S.pads.find(p => p.id === +el.dataset.pad);
+  if (p) { p.side = el.value; render(); saveLocal(); }
+});
+$('#linkTable').addEventListener('change', e => {
+  const sel = e.target.closest('[data-note]'); if (!sel) return;
+  const l = linkOf(+sel.dataset.note); if (l) { l.note = sel.value; saveLocal(); }
+});
+$('#linkTable').addEventListener('click', e => {
+  const un = e.target.closest('[data-unlink]');
+  if (un) {
+    S.links = S.links.filter(l => l.pad !== +un.dataset.unlink);
+    renderTables(); render(); saveLocal(); return;
+  }
+  const row = e.target.closest('[data-rowpad]');
+  if (row) { S.selectedPad = +row.dataset.rowpad; renderTables(); render(); }
+});
+
+/* ------------------------------------------------------------------- keys */
+addEventListener('keydown', e => {
+  if (/^(input|textarea|select)$/i.test(e.target.tagName)) return;
+  const pad = S.pads.find(p => p.id === S.selectedPad);
+  const step = e.shiftKey ? 10 : 1;
+  switch (e.key) {
+    case 'z': case 'Z': {
+      if (S.view.zoom > 1.4) { fitView(); break; }
+      const W = cv.clientWidth / 2, H = cv.clientHeight / 2;
+      const cw = pad || { x: (W - S.view.tx) / S.view.zoom, y: (H - S.view.ty) / S.view.zoom };
+      S.view.zoom = Math.min(8, S.view.zoom * 3);
+      S.view.tx = W - cw.x * S.view.zoom; S.view.ty = H - cw.y * S.view.zoom;
+      render(); break;
+    }
+    case 'r': case 'R': {
+      const L = S.layers[S.active];
+      L.rot = clamp(L.rot + (e.shiftKey ? -1 : 1), -180, 180);
+      syncCards(); render(); saveLocal(); break;
+    }
+    case 'f': case 'F': fitView(); break;
+    case 'Escape': S.selectedPad = null; renderTables(); render(); break;
+    case 'Delete': case 'Backspace':
+      if (pad) { e.preventDefault(); deletePad(pad.id); } break;
+    case 'ArrowLeft': case 'ArrowRight': case 'ArrowUp': case 'ArrowDown': {
+      if (!pad) return;
+      e.preventDefault();
+      if (e.key === 'ArrowLeft') pad.x -= step;
+      if (e.key === 'ArrowRight') pad.x += step;
+      if (e.key === 'ArrowUp') pad.y -= step;
+      if (e.key === 'ArrowDown') pad.y += step;
+      render(); saveLocal(); break;
+    }
+  }
+});
+
+/* --------------------------------------------------------- export / import */
+function download(name, data, type) {
+  const blob = data instanceof Blob ? data : new Blob([data], { type });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  status('saved ' + name);
+}
+
+function projSlug() {
+  const s = String(S.project || 'board').trim().replace(/[^\w.\- ]+/g, '').replace(/\s+/g, '-');
+  return s || 'board';
+}
+
+function sessionObject(withImages = true) {
+  const layers = {};
+  for (const [id, L] of Object.entries(S.layers)) {
+    layers[id] = { name: L.name, src: withImages ? L.src : null, x: L.x, y: L.y, scale: L.scale,
+      rot: L.rot, flipH: L.flipH, flipV: L.flipV, opacity: L.opacity, blend: L.blend, visible: L.visible };
+  }
+  return {
+    app: 'BoardExplorer', version: 1, savedAt: new Date().toISOString(), project: S.project,
+    mirrorBack: S.mirrorBack, layers, pads: S.pads, nextId: S.nextId,
+    mcu: S.mcu, links: S.links, view: S.view, pin1: S.pin1, guides: S.guides,
+  };
+}
+
+async function restoreSession(d) {
+  if (!d || d.app !== 'BoardExplorer') throw new Error('not a BoardExplorer project');
+  S.project = d.project || (d.layers?.front?.name || 'untitled').replace(/\.[^.]+$/, '') || 'untitled';
+  S.mirrorBack = !!d.mirrorBack;
+  S.pads = d.pads || [];
+  S.nextId = d.nextId || (Math.max(0, ...S.pads.map(p => p.id)) + 1);
+  S.links = d.links || []; S.selectedPad = null;
+  Object.assign(S.mcu, d.mcu || {}); ensurePins();
+  S.pin1 = d.pin1 || S.pin1;
+  Object.assign(S.guides, d.guides || {});
+  for (const id of ['front', 'back', 'close']) {
+    const src = (d.layers && d.layers[id]) || {};
+    const L = S.layers[id];
+    Object.assign(L, src, { img: null, src: null });
+    if (src.src) await setLayerSrc(id, src.src, src.name);
+  }
+  Object.assign(S.view, d.view || {});
+  refreshUi(); render();
+}
+
+function refreshUi() {
+  syncCards();
+  $('#projName').value = S.project;
+  $('#mirrorBack').checked = S.mirrorBack;
+  $('#gGrid').checked = S.guides.grid; $('#gCross').checked = S.guides.cross;
+  $('#gRulers').checked = S.guides.rulers; $('#gPin1').checked = S.guides.pin1;
+  $('#gOutline').checked = S.guides.outline;
+  $('#mcuName').value = S.mcu.name; $('#mcuN').value = S.mcu.n;
+  $('#mcuW').value = S.mcu.w; $('#mcuH').value = S.mcu.h; $('#mcuRot').value = S.mcu.rot;
+  renderTables();
+}
+
+$('#projName').addEventListener('input', e => { S.project = e.target.value; saveLocal(); });
+
+$('#saveJSON').addEventListener('click', () => {
+  download(projSlug() + '.board.json', JSON.stringify(sessionObject(true)), 'application/json');
+});
+$('#loadJSON').addEventListener('change', async e => {
+  const f = e.target.files[0]; if (!f) return;
+  try {
+    await restoreSession(JSON.parse(await f.text()));
+    if (!S.project || S.project === 'untitled') { S.project = (f.name || '').replace(/\.board\.json$|\.json$/i, ''); $('#projName').value = S.project; }
+    status('project opened: ' + S.project);
+  }
+  catch (err) { status('open failed: ' + err.message); }
+  e.target.value = '';
+});
+$('#savePNG').addEventListener('click', () => {
+  const W = cv.clientWidth, H = cv.clientHeight, dpr = 2;
+  const c = document.createElement('canvas');
+  c.width = W * dpr; c.height = H * dpr;
+  paint(c.getContext('2d'), W, H, dpr, S.view.zoom, S.view.tx, S.view.ty, false);
+  c.toBlob(b => download('board-overlay.png', b, 'image/png'), 'image/png');
+});
+$('#saveCSV').addEventListener('click', () => {
+  const q = s => '"' + String(s ?? '').replace(/"/g, '""') + '"';
+  const rows = [['pad', 'side', 'label', 'notes', 'mcu_pin', 'mcu_name', 'mcu_function', 'continuity']];
+  for (const p of S.pads) {
+    const l = linkOf(p.id), pin = l ? S.mcu.pins[l.pin - 1] : null;
+    rows.push([p.id, p.side, p.label, p.notes, l ? l.pin : '', pin ? pin.name : '', pin ? pin.fn : '', l ? l.note : '']);
+  }
+  download('pad-mapping.csv', rows.map(r => r.map(q).join(',')).join('\n'), 'text/csv');
+});
+
+/* ------------------------------------------------------------------ status */
+let statusT;
+function status(msg) {
+  $('#status').textContent = msg;
+  clearTimeout(statusT);
+  statusT = setTimeout(() => { $('#status').textContent = 'autosaved in this browser'; }, 3000);
+}
+
+/* ------------------------------------------------------------------- local */
+let saveT;
+function saveLocal() {
+  clearTimeout(saveT);
+  saveT = setTimeout(() => {
+    try { localStorage.setItem('boardexplorer.session', JSON.stringify(sessionObject(true))); }
+    catch {
+      try { localStorage.setItem('boardexplorer.session', JSON.stringify(sessionObject(false))); }
+      catch { status('autosave failed (quota) — use Save JSON'); }
+    }
+  }, 500);
+}
+
+/* -------------------------------------------------------------------- boot */
+ensurePins();
+buildCards();
+renderTables();
+render();
+
+new ResizeObserver(render).observe($('#stage'));
+
+(async function boot() {
+  try {
+    const raw = localStorage.getItem('boardexplorer.session');
+    if (raw) { await restoreSession(JSON.parse(raw)); status('restored last session'); }
+  } catch { /* fresh start */ }
+  if (location.search.includes('selftest')) selftest();
+})();
+
+/* ---------------------------------------------------------------- selftest */
+function selftest() {
+  const m = { n: 32, w: 200, h: 200, x: 0, y: 0, rot: 0 };
+  const p = pinLayout(m);
+  console.assert(p.length === 32, 'pin count', p.length);
+  console.assert(new Set(p.map(q => q.n)).size === 32, 'pin numbers unique');
+  console.assert(p.every(q => Math.abs(Math.abs(q.x) - 100) < 1e-6 || Math.abs(Math.abs(q.y) - 100) < 1e-6), 'pins sit on the perimeter');
+  console.assert(p[0].n === 1 && p[0].side === 'left' && p[0].y < 0, 'pin 1 = top of left edge');
+  console.assert(p[31].n === 32 && p[31].side === 'top', 'pin 32 = top edge after one CCW lap');
+  const ring = pinLayout({ ...m, n: 30 });
+  console.assert(ring.length === 30 && ring[0].side === 'ring', 'ring fallback when N%4 !== 0');
+  const r = xf({ ...m, rot: 90 }, { x: 10, y: 0 });
+  console.assert(Math.abs(r.x) < 1e-6 && Math.abs(r.y - 10) < 1e-6, 'rotation math', r);
+  S.mcu.n = 32; S.mcu.pins = []; ensurePins();
+  parsePinCsv('1,PA0,SWCLK\n2,PA1,SWDIO');
+  console.assert(S.mcu.pins[0].name === 'PA0' && S.mcu.pins[0].fn === 'SWCLK', 'csv parse');
+  console.assert(S.mcu.pins[31].name === 'P32', 'untouched pins keep default names');
+  status('selftest done — see console');
+  console.log('%cBoardExplorer selftest passed', 'color:#22d3ee');
+}
+})();
+</script>
+</body>
+</html>
