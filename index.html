@@ -87,6 +87,22 @@
     background:#11161de6;border:1px solid var(--line);border-radius:6px;padding:4px 8px;
     pointer-events:none;display:none;backdrop-filter:blur(6px)}
   #loupeHint.on{display:block}
+
+  /* document library */
+  .docrow{display:flex;gap:4px;align-items:center;padding:3px 4px;border-bottom:1px solid #1b232e}
+  .docrow:hover{background:#1a2430}
+  .docrow .kind{flex:0 0 auto;font-size:9px;font-weight:700;letter-spacing:.4px;
+    padding:0 4px;line-height:15px;border-radius:3px;background:#1b232e;color:var(--muted)}
+  .docrow .kind.pdf{background:#ef444426;color:#f87171}
+  .docrow .kind.img{background:#22d3ee26;color:#22d3ee}
+  .docrow .kind.txt{background:#a3e63526;color:#a3e635}
+  .docrow input.mini{flex:1;min-width:0;font-size:11px;padding:1px 4px}
+  .docrow button{flex:0 0 auto;padding:0 5px;line-height:17px;font-size:11px;color:var(--muted)}
+  .docrow.missing{opacity:.55}
+  .compcard{padding:5px 6px;margin-bottom:5px}
+  .compcard.sel{border-color:#22d3ee;box-shadow:inset 0 0 0 1px #22d3ee55}
+  .compcard .row{margin:0 0 3px}
+  .compcard select,.compcard input{font-size:11px;padding:1px 4px;min-width:0}
 </style>
 </head>
 <body>
@@ -106,8 +122,20 @@
       <div class="row">
         <button id="savePNG">Export PNG</button>
         <button id="saveCSV">Export CSV</button>
+        <button id="saveCompCSV" title="export the component list">Export BOM</button>
       </div>
       <p class="hint" id="status">—</p>
+    </section>
+
+    <section>
+      <h2>Library <span class="hint" id="docCount">0 files</span></h2>
+      <div class="row" style="margin-top:2px">
+        <label class="btn small">+ file<input type="file" id="docFile" multiple
+          accept=".pdf,.txt,.csv,.md,.json,.png,.jpg,.jpeg,.webp,.gif,.svg,application/pdf,image/*,text/*"></label>
+        <input id="docFilter" placeholder="filter" style="flex:1;min-width:0;font-size:11px;padding:1px 5px">
+      </div>
+      <div class="list" id="docList" style="max-height:170px"></div>
+      <p class="hint" style="margin:5px 0 0" id="docHint">Datasheets stay in this browser (IndexedDB). Attach one to a component to reference it.</p>
     </section>
 
     <section>
@@ -141,7 +169,7 @@
       <p class="hint">
         <kbd>Ctrl</kbd>+<kbd>Z</kbd> undo · <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> redo<br>
         <kbd>S</kbd> hold = hide front · <kbd>B</kbd> hold = hide back<br>
-        <kbd>Z</kbd> zoom · <kbd>M</kbd> loupe · <kbd>V</kbd> toggle via<br>
+        <kbd>C</kbd> place component · <kbd>Z</kbd> zoom · <kbd>M</kbd> loupe · <kbd>V</kbd> toggle via<br>
         <kbd>1</kbd> GND · <kbd>2</kbd> VCC · <kbd>3</kbd> 3V3 · <kbd>4</kbd> SIG · <kbd>5</kbd> 5V · <kbd>0</kbd> clear net<br>
         <kbd>R</kbd>/<kbd>Shift</kbd>+<kbd>R</kbd> rotate layer ±1° · <kbd>←↑↓→</kbd> nudge · <kbd>Del</kbd> delete<br>
         <kbd>F</kbd> fit · <kbd>Esc</kbd> deselect · <kbd>Enter</kbd> end trace · <kbd>Alt</kbd>+drag = move layer
@@ -240,6 +268,27 @@
     </section>
 
     <section>
+      <h2>Components <span class="hint" id="compCount">0</span></h2>
+      <div class="row" style="margin-top:2px">
+        <select id="compKind" style="flex:1;font-size:11px" aria-label="component kind">
+          <option value="resistor">R · resistor</option>
+          <option value="capacitor">C · capacitor</option>
+          <option value="diode">D · diode</option>
+          <option value="led">LED</option>
+          <option value="inductor">L · inductor</option>
+          <option value="crystal">Y · crystal</option>
+          <option value="transistor">Q · transistor</option>
+          <option value="connector">J · connector</option>
+          <option value="testpoint">TP · test point</option>
+          <option value="ic">U · IC / other</option>
+        </select>
+        <button id="compAdd" class="btn small" title="place on canvas (C)">+ place</button>
+      </div>
+      <div class="list" id="compList" style="max-height:250px"></div>
+      <p class="hint" style="margin:5px 0 0">Click a component to select · <kbd>C</kbd> place · drag on canvas to move</p>
+    </section>
+
+    <section>
       <h2>Pads</h2>
       <div class="list" id="padList"></div>
     </section>
@@ -278,6 +327,8 @@ const S = {
   active: 'front',
   mirrorBack: true,
   pads: [], nextId: 1, selectedPad: null, padSide: 'front', hoverPad: null,
+  components: [], nextCompId: 1, selectedComp: null,
+  docs: [],               // metadata only; bytes live in IndexedDB
   traces: [], nextTraceId: 1, activeTrace: null,
   mcu: { name: '', n: 32, x: 0, y: 0, w: 220, h: 220, rot: 0, base: 220, pins: [],
     corner: 0.08,     // fraction of each edge left empty at the corners
@@ -331,6 +382,22 @@ const activeNet = () => {
   const hov = S.pads.find(p => p.id === S.hoverPad);
   if (hov && padNet(hov)) return padNet(hov);
   return '';
+};
+
+/* ------------------------------------------------------------ components */
+// Each kind carries how it draws (symbol) and its default fields, so adding a
+// new kind is one table entry plus, for unusual shapes, one draw case.
+const COMP_KINDS = {
+  resistor: { prefix: 'R', label: 'resistor', fields: ['value', 'tolerance'], defaults: { value: '10k', tolerance: '1%' } },
+  capacitor: { prefix: 'C', label: 'capacitor', fields: ['value', 'voltage'], defaults: { value: '100n', voltage: '16V' } },
+  diode: { prefix: 'D', label: 'diode', fields: ['value'], defaults: { value: '1N4148' } },
+  led: { prefix: 'D', label: 'LED', fields: ['value', 'color'], defaults: { value: 'green' } },
+  inductor: { prefix: 'L', label: 'inductor', fields: ['value'], defaults: { value: '10uH' } },
+  crystal: { prefix: 'Y', label: 'crystal', fields: ['value'], defaults: { value: '32.768k' } },
+  transistor: { prefix: 'Q', label: 'transistor', fields: ['value'], defaults: { value: '2N7002' } },
+  connector: { prefix: 'J', label: 'connector', fields: ['value', 'pins'], defaults: { value: 'JST', pins: '2' } },
+  testpoint: { prefix: 'TP', label: 'test point', fields: [], defaults: {} },
+  ic: { prefix: 'U', label: 'IC', fields: ['value'], defaults: { value: '' } },
 };
 
 /* ----------------------------------------------------------------- canvas */
@@ -774,6 +841,113 @@ function drawLinks(g) {
   g.restore();
 }
 
+function drawComponents(g) {
+  if (!S.components.length) return;
+  const z = S.view.zoom;
+  g.save();
+  g.lineWidth = 1.6 / z;
+  g.textAlign = 'center'; g.textBaseline = 'middle';
+  for (const c of S.components) {
+    const sel = S.selectedComp === c.id;
+    const s = Math.max(8, num(c.size, 46));
+    const half = s / 2;
+    g.save();
+    g.translate(c.x, c.y);
+    g.rotate(rad(num(c.rot, 0)));
+    g.strokeStyle = sel ? '#ffffff' : '#f59e0b';
+    g.fillStyle = '#0a0e13cc';
+    g.lineWidth = (sel ? 2.2 : 1.6) / z;
+
+    const line = (x1, y1, x2, y2) => { g.beginPath(); g.moveTo(x1, y1); g.lineTo(x2, y2); g.stroke(); };
+    // leads, common to every symbol
+    const lead = half * 0.55;
+
+    switch (c.kind) {
+      case 'resistor': {
+        g.fillRect(-half * .42, -half * .55, half * .84, half * 1.1);
+        g.strokeRect(-half * .42, -half * .55, half * .84, half * 1.1);
+        line(-half - lead, 0, -half * .42, 0); line(half * .42, 0, half + lead, 0);
+        break;
+      }
+      case 'capacitor': {
+        line(-half - lead, 0, -half * .16, 0); line(half * .16, 0, half + lead, 0);
+        line(-half * .16, -half * .5, -half * .16, half * .5);
+        line(half * .16, -half * .5, half * .16, half * .5);
+        break;
+      }
+      case 'inductor': {
+        line(-half - lead, 0, -half * .5, 0); line(half * .5, 0, half + lead, 0);
+        for (let i = 0; i < 3; i++) {
+          g.beginPath(); g.arc(-half * .33 + i * half * .33, 0, half * .17, Math.PI, 0); g.stroke();
+        }
+        break;
+      }
+      case 'diode': case 'led': {
+        line(-half - lead, 0, half + lead, 0);
+        g.beginPath();
+        g.moveTo(-half * .26, -half * .38); g.lineTo(-half * .26, half * .38);
+        g.lineTo(half * .24, 0); g.closePath();
+        g.fillStyle = c.kind === 'led' ? '#a3e63533' : '#8b97a833'; g.fill(); g.stroke();
+        line(half * .24, -half * .38, half * .24, half * .38);
+        if (c.kind === 'led') { line(half * .3, -half * .5, half * .62, -half * .78); line(half * .46, -half * .3, half * .78, -half * .58); }
+        break;
+      }
+      case 'crystal': {
+        line(-half - lead, 0, -half * .3, 0); line(half * .3, 0, half + lead, 0);
+        line(-half * .3, -half * .48, -half * .3, half * .48);
+        line(half * .3, -half * .48, half * .3, half * .48);
+        g.strokeRect(-half * .14, -half * .34, half * .28, half * .68);
+        break;
+      }
+      case 'transistor': {
+        g.beginPath(); g.arc(0, 0, half * .62, 0, 7); g.stroke();
+        line(-half * .18, -half * .38, -half * .18, half * .38);
+        line(-half * .18, -half * .18, half * .3, -half * .38);
+        line(-half * .18, half * .18, half * .3, half * .38);
+        break;
+      }
+      case 'connector': {
+        g.strokeRect(-half * .7, -half * .5, half * 1.4, half);
+        const n = clamp(parseInt(c.pins, 10) || 2, 1, 12);
+        for (let i = 0; i < n; i++) {
+          const x = -half * .7 + half * 1.4 * (i + .5) / n;
+          g.beginPath(); g.arc(x, 0, Math.min(half * .12, half * 1.4 / n * .3), 0, 7); g.stroke();
+        }
+        break;
+      }
+      case 'testpoint': {
+        g.beginPath(); g.arc(0, 0, half * .46, 0, 7); g.stroke();
+        g.beginPath(); g.arc(0, 0, half * .16, 0, 7); g.stroke();
+        break;
+      }
+      default: {   // ic
+        g.fillStyle = '#0a0e13cc';
+        g.fillRect(-half, -half * .6, half * 2, half * 1.2);
+        g.strokeRect(-half, -half * .6, half * 2, half * 1.2);
+        g.beginPath(); g.arc(-half * .7, -half * .34, Math.max(1, half * .07), 0, 7); g.stroke();
+      }
+    }
+
+    // reference + value labels stay upright regardless of symbol rotation
+    g.rotate(-rad(num(c.rot, 0)));
+    g.font = `${clamp(11 / z, 6, 26)}px ui-monospace,monospace`;
+    g.fillStyle = sel ? '#ffffff' : '#fbbf24';
+    g.fillText(compRef(c), 0, -half - 9 / z);
+    if (c.value) {
+      g.font = `${clamp(10 / z, 5, 24)}px ui-sans-serif,system-ui`;
+      g.fillStyle = '#cbd5e1';
+      g.fillText(String(c.value), 0, half + 10 / z);
+    }
+    if (c.docId) {
+      g.font = `${clamp(9 / z, 5, 20)}px ui-sans-serif,system-ui`;
+      g.fillStyle = '#22d3ee';
+      g.fillText('▤', half + 8 / z, -half - 8 / z);
+    }
+    g.restore();
+  }
+  g.restore();
+}
+
 function drawPin1(g) {
   const z = S.view.zoom, s = 9 / z;
   g.save();
@@ -879,6 +1053,7 @@ function paint(g, W, H, dpr, z, tx, ty, guides) {
   drawTraces(g);
   drawLinks(g);
   drawMcu(g);
+  drawComponents(g);
   drawPads(g);
   if (guides && S.guides.pin1 && S.pin1.on) drawPin1(g);
   if (guides && S.guides.cross) drawCross(g, W, H, z, tx, ty);
@@ -1568,6 +1743,15 @@ function hitWaypoint(w) {
   }
   return null;
 }
+function hitComp(w) {
+  const r = 16 / S.view.zoom;
+  let best = null, bd = r;
+  for (const c of S.components) {
+    const d = Math.hypot(c.x - w.x, c.y - w.y);
+    if (d < bd) { bd = d; best = c; }
+  }
+  return best;
+}
 function hitPersp(w) {
   if (!S.persist) return null;
   const L = S.layers[S.persist.layer];
@@ -1662,6 +1846,44 @@ function setPadNet(pad, netId) {
   histCommit('net ' + (netId || 'none'));
 }
 
+/* ------------------------------------------------------------- components */
+function compRef(c) {
+  const k = COMP_KINDS[c.kind] || COMP_KINDS.ic;
+  return (c.ref || (k.prefix + c.id)).trim();
+}
+
+function addComponent(w, kind) {
+  const k = COMP_KINDS[kind] ? kind : 'resistor';
+  const def = COMP_KINDS[k];
+  const c = {
+    id: S.nextCompId++,
+    kind: k,
+    ref: '',
+    value: def.defaults.value || '',
+    notes: '',
+    docId: null,
+    x: w.x, y: w.y,
+    rot: 0,
+    size: 46,
+  };
+  for (const [f, v] of Object.entries(def.defaults)) if (c[f] === undefined) c[f] = v;
+  S.components.push(c);
+  S.selectedComp = c.id;
+  renderComponents(); render(); saveLocal();
+  histCommit('add ' + k);
+  return c;
+}
+
+function deleteComponent(id) {
+  S.components = S.components.filter(c => c.id !== id);
+  if (S.selectedComp === id) S.selectedComp = null;
+  renderComponents(); render(); saveLocal();
+  histCommit('delete component');
+}
+
+function compById(id) { return S.components.find(c => c.id === id) || null; }
+const selectedComponent = () => compById(S.selectedComp);
+
 cv.addEventListener('pointerdown', e => {
   try { cv.setPointerCapture(e.pointerId); } catch { /* synthetic events have no active pointer */ }
   const w = toWorld(e);
@@ -1736,6 +1958,13 @@ cv.addEventListener('pointerdown', e => {
   if (mh === 'rot' || mh === 'resize') { drag = { type: 'mcu-' + mh }; return; }
   if (mh === 'move') { drag = { type: 'mcu-move', dx: w.x - S.mcu.x, dy: w.y - S.mcu.y }; return; }
 
+  const comp = hitComp(w);
+  if (comp) {
+    S.selectedComp = comp.id; S.selectedPad = null;
+    drag = { type: 'comp', id: comp.id, dx: w.x - comp.x, dy: w.y - comp.y };
+    renderComponents(); renderTables(); render(); return;
+  }
+
   drag = { type: 'view', sx: e.clientX, sy: e.clientY, ox: S.view.tx, oy: S.view.ty };
   cv.style.cursor = 'grabbing';
 });
@@ -1771,6 +2000,11 @@ cv.addEventListener('pointermove', e => {
     case 'layer': {
       const L = S.layers[drag.id];
       if (L) { L.x = w.x - drag.dx; L.y = w.y - drag.dy; }
+      break;
+    }
+    case 'comp': {
+      const c = compById(drag.id);
+      if (c) { c.x = w.x - drag.dx; c.y = w.y - drag.dy; }
       break;
     }
     case 'pin1':
@@ -1829,6 +2063,7 @@ cv.addEventListener('pointerup', () => {
   // One history entry per completed gesture, not per pointermove frame.
   if (wasDrag) histCommit({
     pad: 'move pad', layer: 'move layer', pin1: 'move pin 1',
+    comp: 'move component',
     'mcu-move': 'move package', 'mcu-rot': 'rotate package', 'mcu-resize': 'resize package',
     persp: 'perspective corner', mask: 'mask', wpt: 'move trace point',
   }[wasDrag] || '');
@@ -1943,11 +2178,211 @@ function renderLinks() {
   $('#linkTable').innerHTML = html + '</tbody>';
 }
 
-const renderTables = () => { renderPins(); renderPads(); renderLinks(); };
+/* ------------------------------------------------------ library + components UI */
+function renderDocs() {
+  const host = $('#docList');
+  if (!host) return;
+  const q = ($('#docFilter')?.value || '').trim().toLowerCase();
+  const docs = S.docs.filter(d => !q || (d.title || '').toLowerCase().includes(q) || (d.name || '').toLowerCase().includes(q));
+  $('#docCount').textContent = S.docs.length + (S.docs.length === 1 ? ' file' : ' files');
+  if (!docs.length) {
+    host.innerHTML = `<div class="empty">${S.docs.length ? 'no match' : 'No documents yet — add a datasheet.'}</div>`;
+    return;
+  }
+  host.innerHTML = docs.map(d => `
+    <div class="docrow${d.missing ? ' missing' : ''}" data-doc="${d.id}">
+      <span class="kind ${d.kind}">${d.kind.toUpperCase()}</span>
+      <input class="mini" data-doc="${d.id}" data-df="title" value="${esc(d.title || d.name)}"
+        placeholder="${esc(d.name)}" aria-label="document title">
+      <button data-dopen="${d.id}" title="${d.missing ? 'file bytes are not in this browser' : 'open'}">↗</button>
+      <button data-dlink="${d.id}" title="attach to selected component">⛓</button>
+      <button data-ddel="${d.id}" title="remove">✕</button>
+    </div>`).join('');
+}
+
+// Project JSON carries document *metadata* only; the bytes live per-browser in
+// IndexedDB. After a restore, flag any document whose bytes aren't here so the
+// list doesn't promise a file that can't be opened.
+async function reconcileDocs() {
+  const keys = new Set(await docList());
+  let missing = 0;
+  for (const d of S.docs) {
+    d.missing = !keys.has(d.id);
+    if (d.missing) missing++;
+  }
+  if (missing) {
+    $('#docHint').textContent = `${missing} document${missing === 1 ? '' : 's'} came from the project file but the bytes aren't in this browser — re-add the file to open it.`;
+  } else {
+    $('#docHint').textContent = 'Datasheets stay in this browser (IndexedDB). Attach one to a component to reference it.';
+  }
+  renderDocs();
+}
+
+async function addDocs(files) {
+  let added = 0, failed = 0;
+  for (const f of files) {
+    try {
+      const id = 'doc' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+      await docPut(id, f);
+      S.docs.push({
+        id, name: f.name, title: f.name.replace(/\.[^.]+$/, ''),
+        kind: docKindOf(f.name, f.type), size: f.size, added: new Date().toISOString(),
+        type: f.type || '',
+      });
+      added++;
+    } catch { failed++; }
+  }
+  // Keep a copy of the metadata in localStorage straight away: a datasheet you
+  // just added should survive a reload even before the debounced save fires.
+  renderDocs(); saveLocal();
+  status(failed
+    ? `added ${added}, ${failed} failed`
+    : `added ${added} file${added === 1 ? '' : 's'} to the library`);
+  if (failed) $('#docHint').textContent = 'Some files could not be stored. Very large PDFs may exceed browser storage.';
+}
+
+async function openDoc(id) {
+  const meta = S.docs.find(d => d.id === id);
+  if (!meta) return;
+  const blob = await docGet(id).catch(() => null);
+  if (!blob) {
+    meta.missing = true;
+    renderDocs();
+    status('file bytes are missing — re-add ' + (meta.name || 'the file'));
+    return;
+  }
+  const url = URL.createObjectURL(blob);
+  if (meta.kind === 'img' || meta.kind === 'pdf') {
+    window.open(url, '_blank', 'noopener');
+  } else {
+    const text = await blob.text();
+    window.open('data:text/plain;charset=utf-8,' + encodeURIComponent(text), '_blank');
+  }
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+
+async function deleteDoc(id) {
+  const meta = S.docs.find(d => d.id === id);
+  S.docs = S.docs.filter(d => d.id !== id);
+  for (const c of S.components) if (c.docId === id) c.docId = null;
+  await docDel(id).catch(() => {});
+  renderDocs(); renderComponents(); render(); saveLocal();
+  status('removed ' + (meta?.title || 'document'));
+}
+
+function linkDocToSelected(docId) {
+  const c = selectedComponent();
+  if (!c) { status('select a component first'); return; }
+  c.docId = (c.docId === docId) ? null : docId;
+  renderComponents(); render(); saveLocal(); histCommit('link document');
+  const d = S.docs.find(d => d.id === docId);
+  status(c.docId ? `${compRef(c)} ↔ ${d?.title || 'document'}` : 'document detached');
+}
+
+function renderComponents() {
+  const host = $('#compList');
+  if (!host) return;
+  $('#compCount').textContent = S.components.length
+    ? S.components.length + (S.components.length === 1 ? ' component' : ' components') : '';
+  if (!S.components.length) {
+    host.innerHTML = '<div class="empty">No components yet — pick a kind and press <b>+ place</b>.</div>';
+    return;
+  }
+  host.innerHTML = S.components.map(c => {
+    const k = COMP_KINDS[c.kind] || COMP_KINDS.ic;
+    const doc = S.docs.find(d => d.id === c.docId);
+    return `
+    <div class="compcard card${S.selectedComp === c.id ? ' sel' : ''}" data-comp="${c.id}">
+      <div class="row">
+        <input data-comp="${c.id}" data-cf="ref" value="${esc(compRef(c))}" style="flex:0 0 52px" aria-label="reference">
+        <span class="hint" style="flex:0 0 auto;margin:0;font-size:10px">${esc(k.label)}</span>
+        <button data-cdel="${c.id}" style="margin-left:auto;padding:0 5px;line-height:17px" title="delete">✕</button>
+      </div>
+      <div class="row">
+        ${k.fields.map(f => `<input data-comp="${c.id}" data-cf="${f}" value="${esc(c[f] ?? '')}"
+          placeholder="${f}" style="flex:1" aria-label="${f}">`).join('')}
+      </div>
+      <div class="row" style="margin-bottom:0">
+        <select data-comp="${c.id}" data-cf="docId" style="flex:1;font-size:10px" aria-label="datasheet">
+          <option value="">— no datasheet —</option>
+          ${S.docs.map(d => `<option value="${d.id}"${c.docId === d.id ? ' selected' : ''}>${esc(d.title || d.name)}</option>`).join('')}
+        </select>
+        ${c.docId ? `<button data-copen="${c.docId}" style="padding:0 5px" title="open datasheet">▤</button>` : ''}
+      </div>
+      ${doc ? '' : ''}
+    </div>`;
+  }).join('');
+}
+
+const renderTables = () => { renderPins(); renderPads(); renderLinks(); renderComponents(); renderDocs(); };
+
+/* library + component listeners */
+$('#docFile').addEventListener('change', async e => {
+  const files = [...e.target.files];
+  e.target.value = '';
+  if (files.length) await addDocs(files);
+});
+$('#docFilter').addEventListener('input', renderDocs);
+
+$('#docList').addEventListener('click', e => {
+  const open = e.target.closest('[data-dopen]');
+  if (open) { openDoc(open.dataset.dopen); return; }
+  const link = e.target.closest('[data-dlink]');
+  if (link) { linkDocToSelected(link.dataset.dlink); return; }
+  const del = e.target.closest('[data-ddel]');
+  if (del) { deleteDoc(del.dataset.ddel); return; }
+});
+$('#docList').addEventListener('input', e => {
+  const el = e.target.closest('input[data-df=title]');
+  if (!el) return;
+  const d = S.docs.find(d => d.id === el.dataset.doc);
+  if (!d) return;
+  d.title = el.value;
+  saveLocal(); histSoon('rename document');
+  renderComponents();
+});
+
+$('#compAdd').addEventListener('click', () => {
+  const kind = $('#compKind').value;
+  const W = cv.clientWidth, H = cv.clientHeight;
+  // drop it in the middle of what you're looking at
+  const w = { x: (W / 2 - S.view.tx) / S.view.zoom, y: (H / 2 - S.view.ty) / S.view.zoom };
+  addComponent(w, kind);
+  status('placed ' + COMP_KINDS[kind].label + ' — drag it onto the board');
+});
+
+$('#compList').addEventListener('click', e => {
+  const del = e.target.closest('[data-cdel]');
+  if (del) { deleteComponent(+del.dataset.cdel); return; }
+  const open = e.target.closest('[data-copen]');
+  if (open) { openDoc(open.dataset.copen); return; }
+  const card = e.target.closest('[data-comp]');
+  if (!card || e.target.matches('input,select,button')) return;
+  S.selectedComp = +card.dataset.comp;
+  renderComponents(); render();
+});
+$('#compList').addEventListener('input', e => {
+  const el = e.target.closest('[data-cf]');
+  if (!el || el.tagName === 'SELECT') return;
+  const c = compById(+el.dataset.comp);
+  if (!c) return;
+  c[el.dataset.cf] = el.value;
+  if (el.dataset.cf === 'ref') c.ref = String(el.value).trim();
+  render(); saveLocal(); histSoon('component ' + el.dataset.cf);
+});
+$('#compList').addEventListener('change', e => {
+  const el = e.target.closest('select[data-cf=docId]');
+  if (!el) return;
+  const c = compById(+el.dataset.comp);
+  if (!c) return;
+  c.docId = el.value || null;
+  // keep an explicit ref so renaming the kind or renumbering never shifts it
+  if (!c.ref) c.ref = compRef(c);
+  renderComponents(); render(); saveLocal(); histCommit('component datasheet');
+});
 
 $('#pinList').addEventListener('click', e => {
-  if (e.target.matches('input')) return;
-  const row = e.target.closest('[data-pin]'); if (!row) return;
+  if (e.target.matches('input')) return;  const row = e.target.closest('[data-pin]'); if (!row) return;
   if (S.selectedPad == null) { status('select a pad first'); return; }
   addLink(S.selectedPad, +row.dataset.pin);
 });
@@ -2084,6 +2519,14 @@ addEventListener('keydown', e => {
       toggleVia(pad);
       status(isVia(pad) ? `pad #${pad.id} marked as via (F↔B)` : `pad #${pad.id} via cleared`);
       break;
+    case 'c': case 'C': {
+      e.preventDefault();
+      const W = cv.clientWidth, H = cv.clientHeight;
+      const w = { x: (W / 2 - S.view.tx) / S.view.zoom, y: (H / 2 - S.view.ty) / S.view.zoom };
+      addComponent(w, $('#compKind').value);
+      status('placed ' + COMP_KINDS[$('#compKind').value].label);
+      break;
+    }
     case 'r': case 'R': {
       if (!S.active) break;
       const L = S.layers[S.active];
@@ -2093,11 +2536,13 @@ addEventListener('keydown', e => {
     case 'f': case 'F': fitView(); break;
     case 'Enter': S.activeTrace = null; buildStack(); buildLayerEditor(); render(); break;
     case 'Escape':
-      S.selectedPad = null; S.persist = null; S.activeTrace = null;
+      S.selectedPad = null; S.selectedComp = null; S.persist = null; S.activeTrace = null;
       if (S.loupe.on) setLoupe(false);
       buildStack(); buildLayerEditor(); renderTables(); render(); break;
     case 'Delete': case 'Backspace':
-      if (pad) { e.preventDefault(); deletePad(pad.id); } break;
+      if (pad) { e.preventDefault(); deletePad(pad.id); }
+      else if (S.selectedComp != null) { e.preventDefault(); deleteComponent(S.selectedComp); }
+      break;
     case 'ArrowLeft': case 'ArrowRight': case 'ArrowUp': case 'ArrowDown': {
       if (!pad) return;
       e.preventDefault();
@@ -2158,6 +2603,8 @@ function sessionObject(withImages = true) {
       style: S.mcu.style || 'quad', pkg: S.mcu.pkg || 'custom',
       targetPitch: S.mcu.targetPitch || null, pins: S.mcu.pins },
     links: S.links, traces: S.traces, nextTraceId: S.nextTraceId,
+    components: S.components, nextCompId: S.nextCompId,
+    docs: S.docs,
     cal: S.cal, useMm: S.useMm,
     view: { zoom: S.view.zoom, tx: S.view.tx, ty: S.view.ty },
     pin1: { ...S.pin1 }, guides: { ...S.guides },
@@ -2310,6 +2757,48 @@ async function restoreSession(d) {
   S.nextTraceId = Math.max(fin(d.nextTraceId, 0), ...S.traces.map(t => t.id), 0) + 1;
   S.activeTrace = null; S.active = 'front';
 
+  // components: unknown kinds fall back to 'ic' rather than disappearing
+  S.components = (Array.isArray(d.components) ? d.components : [])
+    .filter(c => c && Number.isFinite(+c.id))
+    .map(c => {
+      const kind = COMP_KINDS[c.kind] ? c.kind : 'ic';
+      const base = { ...COMP_KINDS[kind].defaults };
+      return {
+        ...base,
+        ...c,
+        id: +c.id, kind,
+        ref: typeof c.ref === 'string' ? c.ref : '',
+        value: typeof c.value === 'string' ? c.value : (base.value || ''),
+        notes: typeof c.notes === 'string' ? c.notes : '',
+        docId: typeof c.docId === 'string' ? c.docId : null,
+        x: fin(c.x, 0), y: fin(c.y, 0),
+        rot: normRot(c.rot),
+        size: clamp(fin(c.size, 46), 10, 600),
+        pins: c.pins !== undefined ? c.pins : base.pins,
+      };
+    });
+  S.nextCompId = Math.max(fin(d.nextCompId, 0), ...S.components.map(c => c.id), 0) + 1;
+  S.selectedComp = null;
+
+  // document metadata (the bytes are in IndexedDB and are not in the payload)
+  const seenDoc = new Set();
+  S.docs = (Array.isArray(d.docs) ? d.docs : [])
+    .filter(x => x && typeof x.id === 'string' && !seenDoc.has(x.id) && seenDoc.add(x.id))
+    .map(x => ({
+      id: x.id,
+      name: typeof x.name === 'string' ? x.name : '',
+      title: typeof x.title === 'string' ? x.title : (x.name || ''),
+      kind: ['pdf', 'img', 'txt'].includes(x.kind) ? x.kind : 'txt',
+      size: fin(x.size, 0),
+      type: typeof x.type === 'string' ? x.type : '',
+      added: typeof x.added === 'string' ? x.added : '',
+    }));
+  // A component pointing at a document this browser doesn't have would show a
+  // dead link; keep the id but flag it in the UI instead of silently dropping.
+  for (const c of S.components) {
+    if (c.docId && !S.docs.some(x => x.id === c.docId)) c.docId = null;
+  }
+
   // calibration: keep only a usable line (two finite points + positive length)
   const c = d.cal;
   S.cal = (c && c.a && c.b && Number.isFinite(+c.mm) && +c.mm > 0
@@ -2378,7 +2867,8 @@ async function restoreSession(d) {
     fitView();
   }
 
-  refreshUi(); updateCalInfo(); updatePitch(); render();
+  refreshUi(); updateCalInfo(); updatePitch(); renderDocs(); renderComponents(); render();
+  reconcileDocs();       // flag metadata whose bytes aren't in this browser
   // A loaded project becomes the current session, so closing the tab right
   // after opening a file doesn't silently fall back to the previous project.
   saveLocal();
@@ -2390,6 +2880,7 @@ function refreshUi() {
   $('#projName').value = S.project;
   $('#mirrorBack').checked = S.mirrorBack;
   $('#useMm').checked = S.useMm;
+  renderDocs(); renderComponents();
   $('#gGrid').checked = S.guides.grid; $('#gCross').checked = S.guides.cross;
   $('#gRulers').checked = S.guides.rulers; $('#gPin1').checked = S.guides.pin1;
   $('#gOutline').checked = S.guides.outline;
@@ -2462,6 +2953,18 @@ $('#saveCSV').addEventListener('click', () => {
   download(projSlug() + '-pads.csv', rows.map(r => r.map(q).join(',')).join('\n'), 'text/csv');
 });
 
+$('#saveCompCSV')?.addEventListener('click', () => {
+  const q = s => '"' + String(s ?? '').replace(/"/g, '""') + '"';
+  const rows = [['ref', 'kind', 'value', 'notes', 'datasheet', 'x', 'y']];
+  for (const c of S.components) {
+    const doc = S.docs.find(d => d.id === c.docId);
+    const k = COMP_KINDS[c.kind] || COMP_KINDS.ic;
+    const value = k.fields.map(f => c[f]).filter(Boolean).join(' ');
+    rows.push([compRef(c), c.kind, value, c.notes, doc ? (doc.title || doc.name) : '', c.x, c.y]);
+  }
+  download(projSlug() + '-components.csv', rows.map(r => r.map(q).join(',')).join('\n'), 'text/csv');
+});
+
 /* ------------------------------------------------------------------ status */
 let statusT;
 function status(msg) {
@@ -2509,6 +3012,78 @@ document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') flushLocal();
 });
 
+/* ------------------------------------------------------- document storage */
+// PDFs and photos blow past the ~5 MB localStorage budget, so the bytes live in
+// IndexedDB and only lightweight metadata travels in the project JSON. That
+// keeps Save/Load small while the library survives reloads.
+const DOC_DB = 'boardexplorer-docs';
+const DOC_STORE = 'files';
+let docDbPromise = null;
+
+function docDb() {
+  if (docDbPromise) return docDbPromise;
+  docDbPromise = new Promise((res, rej) => {
+    if (!('indexedDB' in globalThis)) { rej(new Error('IndexedDB unavailable')); return; }
+    const req = indexedDB.open(DOC_DB, 1);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(DOC_STORE)) db.createObjectStore(DOC_STORE);
+    };
+    req.onsuccess = () => res(req.result);
+    req.onerror = () => rej(req.error || new Error('IndexedDB open failed'));
+  }).catch(err => { docDbPromise = null; throw err; });
+  return docDbPromise;
+}
+
+async function docPut(id, blob) {
+  const db = await docDb();
+  return new Promise((res, rej) => {
+    const tx = db.transaction(DOC_STORE, 'readwrite');
+    tx.objectStore(DOC_STORE).put(blob, id);
+    tx.oncomplete = () => res();
+    tx.onerror = () => rej(tx.error);
+  });
+}
+
+async function docGet(id) {
+  const db = await docDb();
+  return new Promise((res, rej) => {
+    const tx = db.transaction(DOC_STORE, 'readonly');
+    const rq = tx.objectStore(DOC_STORE).get(id);
+    rq.onsuccess = () => res(rq.result || null);
+    rq.onerror = () => rej(rq.error);
+  });
+}
+
+async function docDel(id) {
+  const db = await docDb();
+  return new Promise((res, rej) => {
+    const tx = db.transaction(DOC_STORE, 'readwrite');
+    tx.objectStore(DOC_STORE).delete(id);
+    tx.oncomplete = () => res();
+    tx.onerror = () => rej(tx.error);
+  });
+}
+
+async function docList() {
+  try {
+    const db = await docDb();
+    return await new Promise((res, rej) => {
+      const tx = db.transaction(DOC_STORE, 'readonly');
+      const rq = tx.objectStore(DOC_STORE).getAllKeys();
+      rq.onsuccess = () => res(rq.result || []);
+      rq.onerror = () => rej(rq.error);
+    });
+  } catch { return []; }
+}
+
+const docKindOf = (name, mime) => {
+  const ext = String(name || '').split('.').pop().toLowerCase();
+  if (/pdf/.test(mime) || ext === 'pdf') return 'pdf';
+  if (/^image\//.test(mime) || /^(png|jpe?g|webp|gif|svg|bmp)$/.test(ext)) return 'img';
+  return 'txt';
+};
+
 /* ----------------------------------------------------------------- history */
 // Undo is whole-state, not per-action: a snapshot of everything the user can
 // edit (pads, traces, links, MCU, layer transforms, homography, calibration).
@@ -2530,7 +3105,8 @@ function histSnapshot() {
   }
   return JSON.stringify({
     pads: S.pads, traces: S.traces, links: S.links,
-    nextId: S.nextId, nextTraceId: S.nextTraceId,
+    components: S.components, docs: S.docs,
+    nextId: S.nextId, nextTraceId: S.nextTraceId, nextCompId: S.nextCompId,
     mcu: S.mcu, pin1: S.pin1, cal: S.cal, layers,
   });
 }
@@ -2568,7 +3144,10 @@ function histReset() {
 function applySnapshot(snap) {
   const d = JSON.parse(snap);
   S.pads = d.pads; S.traces = d.traces; S.links = d.links;
+  S.components = d.components || []; S.docs = d.docs || [];
   S.nextId = d.nextId; S.nextTraceId = d.nextTraceId;
+  S.nextCompId = d.nextCompId || (Math.max(0, ...S.components.map(c => c.id)) + 1);
+  if (S.selectedComp != null && !S.components.some(c => c.id === S.selectedComp)) S.selectedComp = null;
   Object.assign(S.mcu, d.mcu);
   S.pin1 = d.pin1;
   S.cal = d.cal;
@@ -2759,9 +3338,68 @@ async function selftest() {
 
   await selftestPersistence();
   await selftestUndo();
+  await selftestComponents();
 
   status('selftest done — see console');
   console.log('%cBoardExplorer selftest passed', 'color:#22d3ee');
+}
+
+/* ------------------------------------------- components / documents test */
+async function selftestComponents() {
+  const keeper = sessionObject(true);
+  const nComp = S.components.length, nDocs = S.docs.length;
+
+  const c = addComponent({ x: 12, y: 34 }, 'resistor');
+  console.assert(S.components.length === nComp + 1, 'component added');
+  console.assert(c.kind === 'resistor' && c.value === '10k', 'resistor defaults applied', c.value);
+  console.assert(compRef(c) === 'R' + c.id, 'reference derives from kind prefix', compRef(c));
+  console.assert(S.selectedComp === c.id, 'new component selected');
+
+  const cap = addComponent({ x: 0, y: 0 }, 'capacitor');
+  console.assert(compRef(cap) === 'C' + cap.id, 'capacitor prefix');
+  const diode = addComponent({ x: 0, y: 0 }, 'diode');
+  console.assert(compRef(diode) === 'D' + diode.id, 'diode prefix');
+
+  // unknown kind must not throw or vanish on load
+  const restored = sessionObject(false);
+  restored.components.push({ id: 999, kind: 'not-a-kind', x: 1, y: 2 });
+  await restoreSession(restored);
+  const bogus = S.components.find(x => x.id === 999);
+  console.assert(!!bogus, 'unknown component kind survives load');
+  console.assert(bogus.kind === 'ic', 'unknown kind falls back to ic', bogus.kind);
+  console.assert(near(bogus.size, 46), 'default size filled in');
+
+  // components round-trip through the payload
+  const snap = sessionObject(false);
+  console.assert(Array.isArray(snap.components) && snap.components.length === S.components.length, 'components in payload');
+  console.assert(typeof snap.nextCompId === 'number', 'nextCompId in payload');
+
+  // document metadata round-trips; a dangling docId is cleared, not left broken
+  S.docs = [{ id: 'docTest', name: 'mcu.pdf', title: 'Datasheet MCU', kind: 'pdf', size: 1234 }];
+  S.components[0].docId = 'docTest';
+  const withDoc = sessionObject(false);
+  console.assert(withDoc.docs.length === 1 && withDoc.docs[0].title === 'Datasheet MCU', 'doc metadata in payload');
+  const dangling = JSON.parse(JSON.stringify(withDoc));
+  dangling.components[0].docId = 'docGone';
+  await restoreSession(dangling);
+  console.assert(S.components[0].docId === null, 'dangling document reference cleared');
+
+  // docKindOf covers the three bins
+  console.assert(docKindOf('a.pdf', '') === 'pdf', 'pdf detected by extension');
+  console.assert(docKindOf('a.png', '') === 'img', 'image detected by extension');
+  console.assert(docKindOf('a.csv', '') === 'txt', 'csv treated as text');
+
+  // undo covers component add/delete
+  histReset();
+  const before = S.components.length;
+  addComponent({ x: 0, y: 0 }, 'led');
+  console.assert(S.components.length === before + 1, 'led added');
+  undo();
+  console.assert(S.components.length === before, 'undo removes the component', S.components.length);
+
+  histReset();
+  await restoreSession(keeper);
+  console.assert(S.docs.length === nDocs, 'document state restored');
 }
 
 /* ------------------------------------------------- undo / peek round-trip test */
