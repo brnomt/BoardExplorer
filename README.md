@@ -194,18 +194,38 @@ toggle them independently.
 ⌇ trace  → click to add waypoints, Enter to finish, drag a dot to move it
 ```
 
+### What a trace connects
+
+Point at a trace, or select it, and the canvas answers the question the tool
+exists for: **which pads and which MCU pins does this copper reach?**
+
+- The pads its copper lands on get a dashed ring.
+- Its MCU pins get a tag: a **solid** ring where the copper actually touches the
+  pin, a **dashed** ring where the pin is only reached indirectly — because a
+  pad on this trace is mapped to it, or because it is tied to a pin that is.
+  The distinction is the whole point: one is something you traced, the other is
+  something the mapping implies.
+- A card in the corner of the canvas names the same set, and its chips are
+  clickable — pick one to select that pad or pin in the sidebar.
+- Loose ends (a trace that stops in mid-air, touching no pad and no pin) are
+  counted in that card rather than silently ignored.
+
 ## Keyboard
+
+Everything is one keystroke. The full list is behind **click to expand** in the
+left panel, so it does not push the layers off screen.
 
 | Key | Action |
 |---|---|
+| `H` `P` `V` `T` `L` `K` `A` | Pan · Pad · Via · Trace · Ruler · Mask · Align |
 | `Z` | zoom in on the selection (or fit, if already zoomed) |
 | `R` / `Shift`+`R` | rotate the active layer ±1° |
 | `←↑↓→` | nudge the selected pad (`Shift` = ×10) |
-| `Del` | delete the selected pad |
+| `Del` | delete the picked trace point, pad, component or trace |
 | `F` | fit everything in view |
 | `Esc` | deselect / leave perspective edit |
 | `Enter` | finish the current trace |
-| `Alt`+drag | move the active layer |
+| `Alt`+drag | move the active layer, or a trace waypoint |
 | wheel | zoom at the cursor |
 
 ## Exports
@@ -237,6 +257,15 @@ A few decisions worth explaining, because they look like omissions:
 **One file, no build.** A `npm create vite` project is four hundred lines of
 scaffolding around two hundred lines of code, and it needs a toolchain to open
 a photo. `index.html` is the whole app. You can email it, and it works.
+
+That said, "one file" is a statement about *distribution*, not a rule about
+*authoring*. This file is now ~6,000 lines, which is past the point where a
+single text buffer is the best editing surface — there is no module boundary,
+no type checking, and every change is a full-file diff. If it keeps growing,
+the sensible move is to split the source into ES modules and ship the bundle,
+keeping the "open one file offline" promise as a build output rather than as
+the repository layout. Any bundler that emits a self-contained `index.html`
+does this without a server; the constraint is the artifact, not the tooling.
 
 **Canvas, not SVG.** The perspective warp needs per-pixel sampling, and the
 mask needs a compositing pass. Both are canvas-native. SVG would mean

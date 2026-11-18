@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="es">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -80,24 +80,47 @@
   .pinrow .pill{flex:0 0 28px;text-align:right;font-variant-numeric:tabular-nums;color:var(--muted);font-size:12px}
   .pinrow .mini{flex:0 0 76px;font-size:12px;padding:1px 5px}
   .pinrow .fn{flex:1;min-width:0;font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .padrow{display:flex;gap:5px;align-items:center;padding:2px 5px;border-bottom:1px solid #1b232e}
+  .padrow{display:flex;flex-direction:column;gap:2px;padding:4px 5px;border-bottom:1px solid #1b232e}
   .padrow.sel{background:#22d3ee14}
+  .padrow .pad-head{display:flex;gap:4px;align-items:center;min-width:0}
   .padrow .pill{flex:0 0 auto;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
   .padrow .mini{min-width:0;font-size:12px;padding:1px 5px}
   .padrow .del{flex:0 0 auto;padding:0 6px;line-height:18px;color:var(--muted)}
+  .padrow .pad-fn{font-size:10px;color:var(--muted);padding-left:2px;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   table{width:100%;border-collapse:collapse;font-size:12px}
   th,td{text-align:left;padding:2px 5px;border-bottom:1px solid #1b232e;white-space:nowrap}
   th{color:var(--muted);font-weight:500;position:sticky;top:0;background:var(--panel)}
-  .tablewrap{max-height:240px;overflow:auto;border:1px solid var(--line);border-radius:6px}
   .empty{color:var(--muted);font-size:12px;padding:8px;text-align:center}
   kbd{background:#1b232e;border:1px solid var(--line);border-radius:3px;padding:0 4px;font-size:12px}
   .cal{font-variant-numeric:tabular-nums}
-  .net-pill{display:inline-block;font-size:10px;font-weight:600;letter-spacing:.3px;
-    border-radius:3px;padding:0 5px;line-height:16px;vertical-align:middle}
   #loupeHint{position:absolute;right:12px;bottom:12px;font-size:11px;color:var(--muted);
     background:#11161de6;border:1px solid var(--line);border-radius:6px;padding:4px 8px;
     pointer-events:none;display:none;backdrop-filter:blur(6px)}
   #loupeHint.on{display:block}
+
+  /* what a highlighted trace actually connects */
+  #traceInfo{position:absolute;right:12px;top:12px;width:270px;display:none;
+    background:#11161df2;border:1px solid var(--line);border-left:3px solid var(--accent);
+    border-radius:8px;padding:7px 9px;backdrop-filter:blur(6px)}
+  #traceInfo.on{display:block}
+  #traceInfo .ti-head{display:flex;align-items:center;gap:5px;margin-bottom:5px}
+  #traceInfo .ti-name{font-weight:600;flex:1;min-width:0;overflow:hidden;
+    text-overflow:ellipsis;white-space:nowrap}
+  #traceInfo .ti-side{font-size:10px;letter-spacing:.4px;color:var(--muted);
+    border:1px solid var(--line);border-radius:3px;padding:0 4px;line-height:14px}
+  #traceInfo .ti-row{display:flex;gap:6px;align-items:flex-start;margin-top:4px}
+  #traceInfo .ti-k{flex:0 0 34px;font-size:10px;text-transform:uppercase;letter-spacing:.7px;
+    color:var(--muted);padding-top:3px}
+  #traceInfo .ti-v{flex:1;min-width:0;display:flex;flex-wrap:wrap;gap:3px}
+  #traceInfo .ti-chip{display:inline-flex;align-items:baseline;gap:4px;font-size:11px;
+    border:1px solid var(--line);border-radius:9px;padding:1px 7px;background:#0b1016;cursor:pointer;
+    font-family:inherit;line-height:1.5;color:var(--fg)}
+  #traceInfo .ti-chip:hover{border-color:var(--accent)}
+  #traceInfo .ti-chip b{color:var(--accent);font-weight:600}
+  #traceInfo .ti-chip i{font-style:normal;color:var(--muted);font-size:10px}
+  #traceInfo .ti-none{font-size:11px;color:var(--muted);padding-top:3px;line-height:1.4}
+  #traceInfo .ti-foot{margin-top:6px;font-size:10px;color:var(--muted);line-height:1.35}
 
   /* document library */
   .docrow{display:flex;gap:4px;align-items:center;padding:3px 4px;border-bottom:1px solid #1b232e}
@@ -124,6 +147,13 @@
   .chip button{padding:0 3px;line-height:13px;font-size:10px;border:0;background:none;color:var(--muted)}
   .chip button:hover{color:#f87171}
   /* shortcut reference */
+  #keysRef summary{cursor:pointer;list-style:none;outline:none}
+  #keysRef summary::-webkit-details-marker{display:none}
+  #keysRef summary::marker{content:''}
+  #keysRef summary:hover .h2{color:var(--fg)}
+  #keysRef summary .h2{font-size:12px;text-transform:uppercase;letter-spacing:.8px;
+    color:var(--muted);display:flex;justify-content:space-between;align-items:baseline}
+  #keysRef[open] summary{margin-bottom:6px}
   .keys{display:grid;grid-template-columns:1fr;gap:2px;margin:0}
   .keys div{display:flex;gap:6px;align-items:baseline;font-size:12px}
   .keys .kk{flex:0 0 92px;text-align:right;white-space:nowrap}
@@ -203,39 +233,24 @@
     </section>
 
     <section>
-      <h2>Tools <span class="hint">single key</span></h2>
-      <div class="keys">
-        <div><span class="kk"><kbd>H</kbd></span><span class="kd">Pan — drag to scroll the photo</span></div>
-        <div><span class="kk"><kbd>P</kbd></span><span class="kd">Pad — click to drop a test pad / pin</span></div>
-        <div><span class="kk"><kbd>V</kbd></span><span class="kd">Via — through-hole: one point, both faces</span></div>
-        <div><span class="kk"><kbd>T</kbd></span><span class="kd">Trace — follow copper, snaps to pads</span></div>
-        <div><span class="kk"><kbd>L</kbd></span><span class="kd">Ruler — measure &amp; calibrate mm</span></div>
-        <div><span class="kk"><kbd>K</kbd></span><span class="kd">Mask — window over the active layer</span></div>
-        <div><span class="kk"><kbd>A</kbd></span><span class="kd">Align — click matching holes on both faces</span></div>
-      </div>
-
-      <h2>Label &amp; edit</h2>
-      <div class="keys">
-        <div><span class="kk"><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd></span><span class="kd">Net: GND · VCC · 3V3</span></div>
-        <div><span class="kk"><kbd>4</kbd><kbd>5</kbd><kbd>0</kbd></span><span class="kd">Net: SIG · 5V · clear</span></div>
-        <div><span class="kk"><kbd>Shift</kbd>+<kbd>V</kbd></span><span class="kd">Mark the selected pad as a via</span></div>
-        <div><span class="kk"><kbd>C</kbd></span><span class="kd">Place the selected component kind</span></div>
-        <div><span class="kk"><kbd>[</kbd> <kbd>]</kbd></span><span class="kd">Resize component (<kbd>Shift</kbd> rotates)</span></div>
-        <div><span class="kk"><kbd>Del</kbd></span><span class="kd">Delete picked trace point / pad / component</span></div>
-        <div><span class="kk"><kbd>←↑↓→</kbd></span><span class="kd">Nudge pad (<kbd>Shift</kbd> ×10)</span></div>
-      </div>
-
-      <h2>View &amp; history</h2>
-      <div class="keys">
-        <div><span class="kk"><kbd>S</kbd> / <kbd>B</kbd></span><span class="kd">Hold: hide front / back face</span></div>
-        <div><span class="kk"><kbd>Z</kbd></span><span class="kd">Zoom to selection</span></div>
-        <div><span class="kk"><kbd>M</kbd></span><span class="kd">Precision loupe</span></div>
-        <div><span class="kk"><kbd>F</kbd></span><span class="kd">Fit the board to the window</span></div>
-        <div><span class="kk"><kbd>R</kbd> / <kbd>Shift</kbd>+<kbd>R</kbd></span><span class="kd">Rotate layer ±1°</span></div>
-        <div><span class="kk"><kbd>Ctrl</kbd>+<kbd>Z</kbd></span><span class="kd">Undo (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> redo)</span></div>
-        <div><span class="kk"><kbd>Esc</kbd></span><span class="kd">Deselect · <kbd>Enter</kbd> finish trace</span></div>
-        <div><span class="kk"><kbd>Alt</kbd>+drag</span><span class="kd">Move the active layer · moves a trace point</span></div>
-      </div>
+      <details id="keysRef">
+        <summary><span class="h2">Keyboard <span class="hint">click to expand</span></span></summary>
+        <div class="keys" style="margin-top:6px">
+          <div><span class="kk"><kbd>H</kbd> <kbd>P</kbd> <kbd>V</kbd> <kbd>T</kbd> <kbd>L</kbd> <kbd>K</kbd> <kbd>A</kbd></span><span class="kd">Pan · Pad · Via · Trace · Ruler · Mask · Align</span></div>
+          <div><span class="kk"><kbd>1</kbd>…<kbd>5</kbd> <kbd>0</kbd></span><span class="kd">Net: GND VCC 3V3 SIG 5V, 0 clears</span></div>
+          <div><span class="kk"><kbd>Shift</kbd>+<kbd>V</kbd></span><span class="kd">Mark the selected pad as a via</span></div>
+          <div><span class="kk"><kbd>C</kbd></span><span class="kd">Place the selected component kind</span></div>
+          <div><span class="kk"><kbd>[</kbd> <kbd>]</kbd></span><span class="kd">Resize component (<kbd>Shift</kbd> rotates)</span></div>
+          <div><span class="kk"><kbd>Del</kbd></span><span class="kd">Delete picked trace point / pad / component</span></div>
+          <div><span class="kk"><kbd>←↑↓→</kbd></span><span class="kd">Nudge pad (<kbd>Shift</kbd> ×10)</span></div>
+          <div><span class="kk"><kbd>S</kbd> / <kbd>B</kbd></span><span class="kd">Hold: hide front / back face</span></div>
+          <div><span class="kk"><kbd>Z</kbd> <kbd>F</kbd> <kbd>M</kbd></span><span class="kd">Zoom to selection · fit · loupe</span></div>
+          <div><span class="kk"><kbd>R</kbd> / <kbd>Shift</kbd>+<kbd>R</kbd></span><span class="kd">Rotate layer ±1°</span></div>
+          <div><span class="kk"><kbd>Ctrl</kbd>+<kbd>Z</kbd></span><span class="kd">Undo (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> redo)</span></div>
+          <div><span class="kk"><kbd>Esc</kbd></span><span class="kd">Deselect · <kbd>Enter</kbd> finish trace</span></div>
+          <div><span class="kk"><kbd>Alt</kbd>+drag</span><span class="kd">Move the active layer · moves a trace point</span></div>
+        </div>
+      </details>
     </section>
   </aside>
 
@@ -275,6 +290,7 @@
       <span class="hint" id="coords">–</span>
     </div>
     <div id="toolHint">drag to pan · Alt+drag moves the active layer</div>
+    <div id="traceInfo" aria-live="polite"></div>
     <div id="loupeHint">loupe ×4 — <kbd>M</kbd> to dismiss</div>
   </main>
 
@@ -311,7 +327,6 @@
       <div class="row">
         <label class="sl">W<input type="number" id="mcuW" value="220" style="width:60px"></label>
         <label class="sl">H<input type="number" id="mcuH" value="220" style="width:60px"></label>
-        <label class="sl">rot<input type="number" id="mcuRot" value="0" step="1" style="width:60px"></label>
       </div>
       <label class="sl">scale
         <span style="float:right"><input class="vnum" data-vnum="mcuScale" type="number" step="0.01" aria-label="package scale" value="1.00"></span>
@@ -344,27 +359,17 @@
       </div>
       <details id="pinoutHelp" style="margin-top:8px">
         <summary style="cursor:pointer;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.8px">
-          pinout table — what is this?
+          pin names — paste one pin per line
         </summary>
         <p class="hint" style="margin:6px 0 4px">
-          It <b>names the pins of the MCU package</b>, nothing else. Paste the datasheet's
-          pin list once and every pin stops being "pin 12" and becomes
-          <b>PA3 / SWCLK</b> in the Pins list, in traces and in the CSV.
-        </p>
-        <p class="hint" style="margin:0 0 6px">
-          One pin per line: <code>number,name,function</code>. The function part is free
-          text — paste straight from a datasheet table:
+          Names the package's pins (<code>number,name,function</code>) — it does
+          <b>not</b> connect anything. Mapping is the Pins list.
         </p>
         <pre class="hint" style="margin:0 0 6px;padding:6px;background:#0e131a;border:1px solid var(--line);border-radius:5px;overflow-x:auto;font-size:11px">1,PA0,GPIO / SWCLK
 2,PA1,GPIO / SWDIO
 3,PA2,ADC0</pre>
-        <p class="hint" style="margin:0">
-          It does <b>not</b> connect pins to pads. That link is the
-          <b>Pins</b> list: select a pad on the canvas, then click the pin it
-          rings out to. Do that once per pad and the mapping is complete.
-        </p>
       </details>
-      <label class="sl">pinout table — one <code>pin#,name,function</code> per line
+      <label class="sl">pin names — one <code>pin#,name,function</code> per line
         <textarea id="mcuCsv" rows="3" style="width:100%;resize:vertical"
           placeholder="1,PA0,GPIO&#10;2,PA1,SWCLK"></textarea>
       </label>
@@ -384,15 +389,23 @@
     </section>
 
     <section>
-      <h2>Pins <span class="hint">pick a pad, then a pin</span></h2>
+      <h2>Pins <span class="hint" id="pinMapped"></span></h2>
       <p class="hint" style="margin:0 0 6px">
-        This is where the mapping is made: select a pad on the canvas, then click
-        the MCU pin it rings out to. Repeat.
-      </p>
-      <p class="hint" style="margin:0 0 6px">
-        <kbd>Alt</kbd>+click a pin, then another, to tie two MCU pins together.
+        Select a pad, then click a pin to map it. <kbd>Alt</kbd>+click two pins to tie them together.
       </p>
       <div class="list" id="pinList"></div>
+    </section>
+
+    <section>
+      <h2>Pads <span class="hint" id="padCount"></span></h2>
+      <div class="row" style="margin:0 0 5px">
+        <label class="mini-chk"><input type="checkbox" id="padFilterUnmapped"> only unmapped</label>
+      </div>
+      <div class="list" id="padList"></div>
+      <p class="hint" style="margin:5px 0 0" id="padHint">
+        A pad's own row sets its label, net and pin. Selecting a pad and clicking
+        a pin above does the same thing.
+      </p>
     </section>
 
     <section>
@@ -415,16 +428,6 @@
       </div>
       <div class="list" id="compList" style="max-height:250px"></div>
       <p class="hint" style="margin:5px 0 0">Click a component to select · <kbd>C</kbd> place · drag on canvas to move</p>
-    </section>
-
-    <section>
-      <h2>Pads</h2>
-      <div class="list" id="padList"></div>
-    </section>
-
-    <section>
-      <h2>Mapping</h2>
-      <div class="tablewrap"><table id="linkTable"></table></div>
     </section>
   </aside>
 </div>
@@ -480,7 +483,6 @@ const S = {
   peek: { id: null, wasVisible: true },   // layer temporarily hidden by a held key
   cursor: null,           // {sx,sy,x,y} last pointer over canvas
   persist: null,          // {a,b} corners while editing a perspective
-  maskEdit: null,         // {layer, ax, ay} while dragging a mask
   measure: null,          // {a,b} in progress or last measurement
   // Photo registration: pairs of homologous points (a = reference face,
   // b = the face being moved). `phase` tracks which face is being clicked.
@@ -671,7 +673,7 @@ function refreshVnums() {
   }
   const c = selectedComponent();
   if (c) { vset('v-csize', c.size, 2, 1); vset('v-crot', c.rot, 2, 1); }
-  vset('mcuScale', fin(S.mcu._lastF, 1), 2, 1);
+  vset('mcuScale', mcuScaleFactor(), 2, 1);
   vset('mcuRot', S.mcu.rot, 2, 1);
   vset('mcuCorner', S.mcu.corner, 2, 100);
   vset('mcuFill', S.mcu.pinFill, 2, 100);
@@ -846,6 +848,19 @@ function ensurePins() {
   S.mcu.n = n;
   const old = S.mcu.pins || [];
   S.mcu.pins = Array.from({ length: n }, (_, i) => old[i] || { name: 'P' + (i + 1), fn: '' });
+}
+
+// Shrinking the pin count leaves references to pins that no longer exist on
+// traces, pad links and pin ties. They would still appear in the project file
+// and in the CSV, so they are dropped here rather than silently shipped.
+function prunePinRefs() {
+  const n = S.mcu.n;
+  const live = v => v >= 1 && v <= n;
+  S.links = S.links.filter(l => live(l.pin));
+  S.pinLinks = (S.pinLinks || []).filter(l => live(l.a) && live(l.b));
+  for (const t of S.traces) {
+    if (Array.isArray(t.pins)) t.pins = t.pins.filter(live);
+  }
 }
 
 const linkOf = padId => S.links.find(l => l.pad === padId) || null;
@@ -1269,20 +1284,38 @@ function drawPinLinks(g) {
 }
 
 function drawPins(g) {
-  // Pins belonging to the hovered/active trace are highlighted so moving over a
-  // trace answers "which pins does this reach?" without opening the panel.
+  // The hovered trace (or the selected one) advertises everything it reaches:
+  // the pads its copper lands on, the pins its copper touches, the pins those
+  // pads are mapped to, and any pin tied to one of them. A pin reached only
+  // through the pad→pin mapping is drawn in a lighter, hollow style so the
+  // difference between "the copper goes here" and "this pad is wired to here"
+  // stays visible.
   const t = traceById(S.hoverTrace != null ? S.hoverTrace : S.activeTrace);
-  if (!t || !(t.pins || []).length) return;
+  if (!t) return;
+  const info = traceLinks(t);
+  if (!info) return;
   const z = S.view.zoom;
   g.save();
-  for (const n of t.pins) {
-    const p = pinLayout(S.mcu).find(q => q.n === n);
+  g.textAlign = 'center'; g.textBaseline = 'middle';
+  for (const pin of info.pins) {
+    const p = pinLayout(S.mcu).find(q => q.n === pin.n);
     if (!p) continue;
     const q = xf(S.mcu, p);
-    // Generous ring so it reads at any zoom, drawn behind the pin label.
+    const direct = pin.how.includes('trace');
     g.beginPath(); g.arc(q.x, q.y, 14 / z, 0, 7);
-    g.fillStyle = 'rgba(34,211,238,0.30)'; g.fill();
-    g.strokeStyle = '#22d3ee'; g.lineWidth = 2.2 / z; g.stroke();
+    g.fillStyle = direct ? 'rgba(34,211,238,0.30)' : 'rgba(34,211,238,0.12)';
+    g.fill();
+    g.strokeStyle = direct ? '#22d3ee' : '#22d3ee99';
+    g.lineWidth = (direct ? 2.2 : 1.5) / z;
+    if (!direct) g.setLineDash([3 / z, 2 / z]);
+    g.stroke();
+    g.setLineDash([]);
+  }
+  // pads: ringed so the answer to "which pad feeds this trace" is visible
+  for (const p of info.pads) {
+    g.beginPath(); g.arc(p.x, p.y, 18 / z, 0, 7);
+    g.strokeStyle = '#22d3ee'; g.lineWidth = 2 / z;
+    g.setLineDash([3 / z, 2.5 / z]); g.stroke(); g.setLineDash([]);
   }
   g.restore();
 }
@@ -1568,21 +1601,10 @@ function paint(g, W, H, dpr, z, tx, ty, guides) {
   }
 }
 
-// Repaint the canvas without touching any panel DOM. Input handlers use this so
-// typing in a sidebar field never rebuilds the element you're typing into.
-function renderCanvasOnly() {
-  const dpr = devicePixelRatio || 1;
-  const W = cv.clientWidth, H = cv.clientHeight;
-  if (!W || !H) return;
-  if (!VIEW_INIT) { S.view.tx = W / 2; S.view.ty = H / 2; VIEW_INIT = true; }
-  if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) {
-    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
-  }
-  paint(ctx, W, H, dpr, S.view.zoom, S.view.tx, S.view.ty, true);
-  if (S.loupe.on) drawLoupe(ctx, W, H, dpr);
-  $('#zoomLbl').textContent = Math.round(S.view.zoom * 100) + '%';
-}
-
+// Repaint the canvas. No panel list is rebuilt, so an input handler can call
+// this while the user is typing in a sidebar field and keep focus, caret and
+// in-flight composition intact. `renderCanvasOnly` is the same call under the
+// name that documents that intent at the call site.
 function render() {
   const dpr = devicePixelRatio || 1;
   const W = cv.clientWidth, H = cv.clientHeight;
@@ -1594,7 +1616,12 @@ function render() {
   paint(ctx, W, H, dpr, S.view.zoom, S.view.tx, S.view.ty, true);
   if (S.loupe.on) drawLoupe(ctx, W, H, dpr);
   $('#zoomLbl').textContent = Math.round(S.view.zoom * 100) + '%';
+  // The card restates what the canvas rings show, so a repaint after a rename
+  // has to refresh it too. It owns only #traceInfo, never the editable lists.
+  renderTraceInfo();
 }
+
+const renderCanvasOnly = render;
 
 /* -------------------------------------------------------- precision loupe */
 function setLoupe(on) {
@@ -1990,27 +2017,41 @@ function buildAlignEditor(host) {
 
 function buildTraceEditor(host) {  const t = S.traces.find(t => t.id === S.activeTrace);
   if (!t) { host.innerHTML = ''; return; }
-  const padList = (t.pads || []).map(id => {
-    const p = S.pads.find(x => x.id === id);
-    if (!p) return '';
+  const info = traceLinks(t);
+  // `ownPins` is "what the copper touches" and it is needed before the chip
+  // markup below, so it is computed here rather than further down.
+  const ownPins = info.pins.filter(p => p.how.includes('trace'));
+  // Two groups, because they answer different questions: what the copper
+  // physically touches (detachable here), and what that implies through the
+  // pad→pin mapping (informational — it is edited in the Pads list).
+  const padList = info.pads.map(p => {
     const net = padNet(p);
-    // A pad may be linked to one MCU pin; show it so the chip reads as a chain.
     const link = linkOf(p.id);
     const pin = link ? S.mcu.pins[link.pin - 1] : null;
     return `<span class="chip" style="border-color:${p.color}66">
       <b style="color:${p.color}">#${p.id}</b>${net ? ` <i style="color:${NET_DEFS[net]?.color || p.color}">${esc(net)}</i>` : ''}
       ${pin ? ` <span style="color:#8b97a8">→ ${esc(pin.name || 'pin ' + link.pin)}</span>` : ''}
-      <button data-tpadrm="${p.id}" title="detach">✕</button>
+      <button data-tpadrm="${p.id}" title="detach from this trace">✕</button>
     </span>`;
   }).join('');
-  const pinList = (t.pins || []).map(n => {
-    const pin = S.mcu.pins[n - 1];
-    return `<span class="chip">pin ${n}${pin && pin.name ? ' · ' + esc(pin.name) : ''}
-      <button data-tpinrm="${n}" title="detach">✕</button></span>`;
+  const pinList = ownPins.map(pin => {
+    return `<span class="chip">
+      ${esc(pin.name || 'pin ' + pin.n)}${pin.name ? ` <i style="color:#8b97a8">${pin.n}</i>` : ''}
+      ${pin.fn ? ` <i style="color:#8b97a8">${esc(pin.fn)}</i>` : ''}
+      <button data-tpinrm="${pin.n}" title="detach from this trace">✕</button>
+    </span>`;
   }).join('');
-  const unattached = S.pads.filter(p => !(t.pads || []).includes(p.id));
+  const unattached = S.pads.filter(p => !info.pads.some(x => x.id === p.id));
+  // Only the associations this trace owns are editable here. Everything else
+  // is derived (a pad's own mapping, a pin tie), so it is summarised in one
+  // line instead of being listed twice — the canvas card already spells it out.
+  const inferredPins = info.pins.filter(p => !p.how.includes('trace'));
+  const inferredLine = inferredPins.length
+    ? `<p class="hint" style="margin:4px 0 0">also reaches ${inferredPins.map(p =>
+        esc(p.name || 'pin ' + p.n)).join(', ')} via pad mapping or pin ties</p>`
+    : '';
   const unattachedPins = Array.from({ length: S.mcu.n }, (_, i) => i + 1)
-    .filter(n => !(t.pins || []).includes(n));
+    .filter(n => !ownPins.some(p => p.n === n));
   const pinOpt = n => {
     const pin = S.mcu.pins[n - 1];
     const nm = pin && pin.name ? ' · ' + pin.name : '';
@@ -2030,8 +2071,8 @@ function buildTraceEditor(host) {  const t = S.traces.find(t => t.id === S.activ
           <input type="range" data-t="width" min="1" max="20" step="0.5" value="${t.width}"></label>
       </div>
 
-      <div class="sl" style="margin-top:6px">connected pads</div>
-      <div class="chips">${padList || '<span class="hint" style="margin:0">none — a trace snaps to a pad when a waypoint lands on it</span>'}</div>
+      <div class="sl" style="margin-top:6px">pads on this trace</div>
+      <div class="chips">${padList || '<span class="hint" style="margin:0">none — copper must land on a pad</span>'}</div>
       <div class="row" style="margin:4px 0 0">
         <select data-t-addpad style="flex:1;font-size:11px" aria-label="attach a pad to this trace">
           <option value="">+ attach a pad…</option>
@@ -2039,14 +2080,15 @@ function buildTraceEditor(host) {  const t = S.traces.find(t => t.id === S.activ
         </select>
       </div>
 
-      <div class="sl" style="margin-top:6px">connected MCU pins</div>
-      <div class="chips">${pinList || '<span class="hint" style="margin:0">none — click a trace waypoint on a pin, or pick one below</span>'}</div>
+      <div class="sl" style="margin-top:6px">pins the copper touches</div>
+      <div class="chips">${pinList || '<span class="hint" style="margin:0">none — a waypoint has to land on a pin</span>'}</div>
       <div class="row" style="margin:4px 0 0">
         <select data-t-addpin style="flex:1;font-size:11px" aria-label="attach an MCU pin to this trace">
           <option value="">+ attach a pin…</option>
           ${unattachedPins.map(pinOpt).join('')}
         </select>
       </div>
+      ${inferredLine}
 
       <div class="sl" style="margin-top:8px">edit</div>
       <div class="row" style="margin:0 0 4px">
@@ -2076,8 +2118,166 @@ function buildTraceEditor(host) {  const t = S.traces.find(t => t.id === S.activ
   refreshVnums();
 }
 
-/* Attach/detach helpers for the trace → pad/pin association. */
+/* -------------------------------------------------------- trace info card */
+// The canvas answers "which pins and pads is this trace on?" with rings; this
+// card answers it in words, and lets you jump to a pad or pin from here.
+// It appears for the trace under the cursor or the selected one, and shows
+// nothing at all when neither exists — an empty card would just be noise.
+function renderTraceInfo() {
+  const host = $('#traceInfo');
+  if (!host) return;
+  const id = S.hoverTrace != null ? S.hoverTrace : S.activeTrace;
+  const t = traceById(id);
+  if (!t) { host.classList.remove('on'); host.innerHTML = ''; return; }
+
+  const info = traceLinks(t);
+  const padChips = info.pads.map(p => {
+    const net = padNet(p);
+    const l = linkOf(p.id);
+    const target = l
+      ? `<b>${esc((S.mcu.pins[l.pin - 1] || {}).name || 'pin ' + l.pin)}</b>`
+      : '';
+    return `<button class="ti-chip" data-ti-pad="${p.id}" title="select pad #${p.id}">
+      <span style="color:${p.color}">#${p.id}</span>${p.label ? ' ' + esc(p.label) : ''}
+      ${net ? `<i>${esc(net)}</i>` : ''}${target ? ' →' + target : ''}
+    </button>`;
+  }).join('');
+  const pinChips = info.pins.map(p => {
+    const why = p.how.length > 1 ? 'reached by copper and through a pad'
+      : p.how[0] === 'pad' ? 'reached through its pad\u2019s mapping'
+      : p.how[0] === 'pin' ? 'tied to a pin on this trace' : 'copper touches this pin';
+    // The number and the name are separate facts and must not run together
+    // ("PA3" + "5" reads as "PA35").
+    return `<button class="ti-chip" data-ti-pin="${p.n}" title="${esc(why)}">
+      <b>${p.name ? esc(p.name) : 'pin ' + p.n}</b>${p.name ? `<i>#${p.n}</i>` : ''}${p.fn ? `<i>${esc(p.fn)}</i>` : ''}
+    </button>`;
+  }).join('');
+  // Ties and pad hops are inferences, not copper. Saying so once, quietly,
+  // is what separates "I traced this" from "this is implied".
+  const inferred = info.pins.filter(p => !p.how.includes('trace')).length;
+
+  const dangling = traceDanglingEnds(t);
+  const parts = [];
+  if (!info.pads.length) parts.push('no pads');
+  if (!info.pins.length) parts.push('no MCU pins');
+  if (dangling.length) parts.push(`${dangling.length} loose end${dangling.length === 1 ? '' : 's'}`);
+
+  host.innerHTML = `
+    <div class="ti-head">
+      <span class="sw" style="width:9px;height:9px;border-radius:2px;background:${t.color}"></span>
+      <span class="ti-name">${esc(t.name || 'trace ' + t.id)}</span>
+      <span class="ti-side">${t.side === 'back' ? 'BACK' : 'FRONT'}</span>
+    </div>
+    <div class="ti-row">
+      <span class="ti-k">pads</span>
+      <span class="ti-v">${padChips || '<span class="ti-none">none — copper does not land on a pad</span>'}</span>
+    </div>
+    <div class="ti-row">
+      <span class="ti-k">pins</span>
+      <span class="ti-v">${pinChips || '<span class="ti-none">none — not on a pin, and no pad links to one</span>'}</span>
+    </div>
+    ${inferred ? `<div class="ti-foot">${inferred} pin${inferred === 1 ? '' : 's'} reached by
+      mapping or tie, not by copper — solid ring is copper, dashed is implied.</div>` : ''}
+    ${parts.length ? `<div class="ti-foot">${esc(parts.join(' · '))}</div>` : ''}`;
+  host.classList.add('on');
+}
+
+// Chips are a navigation shortcut: picking one selects that pad or pin so its
+// row in the sidebar is highlighted and the canvas shows where it is.
+$('#traceInfo').addEventListener('click', e => {
+  const padBtn = e.target.closest('[data-ti-pad]');
+  if (padBtn) {
+    S.selectedPad = +padBtn.dataset.tiPad;
+    S.selectedComp = null;
+    renderTables(); render();
+    const row = document.querySelector(`#padList .padrow[data-pad="${S.selectedPad}"]`);
+    if (row) row.scrollIntoView({ block: 'nearest' });
+    return;
+  }
+  const pinBtn = e.target.closest('[data-ti-pin]');
+  if (pinBtn) {
+    const n = +pinBtn.dataset.tiPin;
+    const row = document.querySelector(`#pinList .pinrow[data-pin="${n}"]`);
+    if (row) row.scrollIntoView({ block: 'nearest' });
+    status(`pin ${n} ← ${traceById(S.hoverTrace ?? S.activeTrace)?.name || 'trace'}`);
+    return;
+  }
+});
+
+// Leaving the card for anywhere but the canvas drops the hover, so a trace you
+// swept past cannot keep its card on screen after you've moved on.
+$('#traceInfo').addEventListener('pointerleave', e => {
+  if (e.relatedTarget === cv) return;      // the canvas re-evaluates on its own
+  if (S.activeTrace == null && S.hoverTrace != null) {
+    S.hoverTrace = null;
+    render();
+  }
+});
+
 function traceById(id) { return S.traces.find(t => t.id === id) || null; }
+
+// Everything one trace is electrically attached to, resolved through the
+// pad→pin mapping and pin↔pin pairs. `S.traces[].pads/.pins` only records what
+// the copper physically landed on; a pad that is linked to pin 12 means the
+// trace reaches pin 12 too, and a pin tied to another pin reaches that one.
+// Both the canvas highlight and the sidebar read from here, so the two can
+// never tell different stories about the same trace.
+function traceLinks(t) {
+  if (!t) return null;
+  const pads = (t.pads || [])
+    .map(id => S.pads.find(p => p.id === id))
+    .filter(Boolean);
+  const pins = new Map();          // n → { n, name, fn, how: ['trace'|'pad'|'pin'] }
+  const addPin = (n, how) => {
+    n = +n;
+    if (!(n >= 1 && n <= S.mcu.n)) return;
+    const cur = pins.get(n);
+    if (cur) { if (!cur.how.includes(how)) cur.how.push(how); return; }
+    const meta = S.mcu.pins[n - 1] || {};
+    pins.set(n, { n, name: meta.name || '', fn: meta.fn || '', how: [how] });
+  };
+  for (const n of (t.pins || [])) addPin(n, 'trace');            // touched by copper
+  for (const p of pads) {                                        // via the pad's own link
+    const l = linkOf(p.id);
+    if (l) addPin(l.pin, 'pad');
+  }
+  // Tied pins follow transitively: if pin 4 is tied to 9 and 9 to 14, copper on
+  // 4 reaches 14 too. A single pass would miss the second hop, and the canvas
+  // highlight is exactly where you would notice the omission.
+  const queue = [...pins.keys()];
+  const seen = new Set(queue);
+  while (queue.length) {
+    const n = queue.shift();
+    for (const l of S.pinLinks) {
+      const other = l.a === n ? l.b : l.b === n ? l.a : null;
+      if (other == null) continue;
+      addPin(other, 'pin');
+      if (!seen.has(other)) { seen.add(other); queue.push(other); }
+    }
+  }
+  const sorted = [...pins.values()].sort((a, b) => a.n - b.n);
+  return { pads, pins: sorted, padPins: pads.map(p => linkOf(p.id)), trace: t };
+}
+
+// Ends of a trace that stop in mid-air: neither a pad nor an MCU pin is near
+// them. Reported rather than hidden — an unfinished trace is a normal state,
+// but it should never look like a finished one.
+function traceDanglingEnds(t) {
+  if (!t || !t.pts || t.pts.length < 2) return [];
+  const tol = 14 / S.view.zoom;
+  const ends = [{ pt: t.pts[0], i: 0 }, { pt: t.pts[t.pts.length - 1], i: t.pts.length - 1 }];
+  const out = [];
+  for (const e of ends) {
+    const onPad = S.pads.some(p => Math.hypot(p.x - e.pt.x, p.y - e.pt.y) <= tol);
+    if (onPad) continue;
+    const onPin = pinLayout(S.mcu).some(p => {
+      const q = xf(S.mcu, p);
+      return Math.hypot(q.x - e.pt.x, q.y - e.pt.y) <= tol;
+    });
+    if (!onPin) out.push(e.i);
+  }
+  return out;
+}
 
 function attachPadToTrace(traceId, padId) {
   const t = traceById(traceId), p = S.pads.find(x => x.id === padId);
@@ -2380,10 +2580,17 @@ function applyPkgPreset(id) {
     S.mcu.w = 220;
     S.mcu.h = Math.max(40, Math.round(220 * aspect));
   }
+  // The preset's own size is the reference the scale multiplier is measured
+  // against, so a freshly applied preset reads 1.00× instead of some fraction
+  // of an unrelated default.
+  S.mcu.base = S.mcu.w;
+  S.mcu._lastF = 1;
   ensurePins();
   $('#mcuN').value = S.mcu.n;
   $('#mcuW').value = Math.round(S.mcu.w);
   $('#mcuH').value = Math.round(S.mcu.h);
+  $('#mcuScale').value = 1;
+  vset('mcuScale', 1, 2, 1);
   $('#mcuCorner').value = S.mcu.corner;
   $('#mcuFill').value = S.mcu.pinFill;
   $('#mcuPinLen').value = S.mcu.pinLen;
@@ -2405,7 +2612,7 @@ $('#mcuN').addEventListener('change', e => {
   S.mcu.n = clamp(num(e.target.value, 32) | 0, 1, 256);
   S.mcu.pkg = 'custom';
   $('#mcuPkg').value = 'custom';
-  $('#mcuN').value = S.mcu.n; ensurePins(); updatePitch(); mcuSync();
+  $('#mcuN').value = S.mcu.n; ensurePins(); prunePinRefs(); updatePitch(); mcuSync();
   histCommit('pin count');
 });
 $('#mcuName').addEventListener('input', e => { S.mcu.name = e.target.value; renderMcuDoc(); saveLocal(); });
@@ -2420,10 +2627,8 @@ $('#mcuDoc').addEventListener('change', e => {
 $('#mcuDocOpen').addEventListener('click', () => { if (S.mcu.docId) openDoc(S.mcu.docId); });
 $('#mcuW').addEventListener('input', e => { S.mcu.w = Math.max(2, num(e.target.value, 220)); updatePitch(); render(); saveLocal(); });
 $('#mcuH').addEventListener('input', e => { S.mcu.h = Math.max(2, num(e.target.value, 220)); updatePitch(); render(); saveLocal(); });
-$('#mcuRot').addEventListener('input', e => { S.mcu.rot = num(e.target.value, 0); $('#mcuRotSlider').value = S.mcu.rot; render(); saveLocal(); });
 $('#mcuRotSlider').addEventListener('input', e => {
   S.mcu.rot = num(e.target.value, 0);
-  $('#mcuRot').value = Math.round(S.mcu.rot);
   vset('mcuRot', S.mcu.rot, 2, 1);
   render(); saveLocal();
 });
@@ -2456,11 +2661,34 @@ for (const [id, cfg] of Object.entries(MCU_VNUM)) {
       el.value = (stored * cfg.scale).toFixed(2);
       const range = document.querySelector(cfg.sel);
       if (range && document.activeElement !== range) range.value = stored;
-      if (cfg.k === 'rot') { $('#mcuRot').value = stored; }
       updatePitch(); render(); saveLocal(); histCommit('package ' + cfg.k);
     });
     el.addEventListener('keydown', ev => { if (ev.key === 'Enter') { ev.preventDefault(); el.blur(); } });
   });
+}
+
+// Package scale is a *multiplier over the package's reference width*, not an
+// independent size. It used to read `S.mcu.base`, which was frozen at 220 and
+// never followed a preset or a W/H edit — so after applying a QFN preset the
+// readout claimed 1.00× while the package was 2× its base, and typing a factor
+// rescaled to the wrong size. Deriving the current factor from w/base makes the
+// number and the geometry agree no matter how the size was set.
+const mcuBaseW = () => Math.max(1, num(S.mcu.base, 220));
+const mcuScaleFactor = () => clamp(S.mcu.w / mcuBaseW(), 0.01, 60);
+
+// Set the package to an absolute multiple of its base, keeping the aspect.
+function setMcuScale(f) {
+  const factor = clamp(num(f, 1), 0.01, 60);
+  const cur = mcuScaleFactor();
+  const ratio = factor / cur;          // relative, so rounding can't drift
+  S.mcu.w = Math.max(1, S.mcu.w * ratio);
+  S.mcu.h = Math.max(1, S.mcu.h * ratio);
+  S.mcu._lastF = factor;
+  $('#mcuW').value = Math.round(S.mcu.w);
+  $('#mcuH').value = Math.round(S.mcu.h);
+  $('#mcuScale').value = factor;
+  vset('mcuScale', factor, 2, 1);
+  updatePitch();
 }
 
 // mcuScale is a multiplier over a captured base, so it needs its own path.
@@ -2468,15 +2696,9 @@ document.querySelectorAll('[data-vnum="mcuScale"]').forEach(el => {
   el.addEventListener('change', () => {
     const f = parseFloat(String(el.value).replace(',', '.'));
     if (!Number.isFinite(f)) { refreshVnums(); return; }
-    const factor = clamp(f, 0.01, 60);
-    const base = { w: S.mcu.base || 220, h: S.mcu.h / (S.mcu._lastF || 1) };
-    S.mcu._lastF = factor;
-    S.mcu.w = Math.max(1, base.w * factor);
-    S.mcu.h = Math.max(1, base.h * factor);
-    $('#mcuW').value = Math.round(S.mcu.w);
-    $('#mcuH').value = Math.round(S.mcu.h);
-    el.value = factor.toFixed(2);
-    updatePitch(); render(); saveLocal(); histCommit('package scale');
+    setMcuScale(f);
+    el.value = mcuScaleFactor().toFixed(2);
+    render(); saveLocal(); histCommit('package scale');
   });
   el.addEventListener('keydown', ev => { if (ev.key === 'Enter') { ev.preventDefault(); el.blur(); } });
 });
@@ -2497,27 +2719,13 @@ function updatePitch() {
     `pitch ${p.toFixed(1)} px${mm ? ' = ' + mm : ''}${tgt} · ${per | 0} pins/${edge}`;
 }
 
-// Uniform scale: multiplies the package from a captured base while dragging.
-// The readout shows the multiplier currently applied, and it is NOT reset on
-// release — a value you can read and type is worth more than a slider that
-// snaps back to 1 and lies about the package size.
-let mcuScaleBase = null;
-const MCU_BASE_W = () => num(S.mcu.base, 220);
-$('#mcuScale').addEventListener('pointerdown', () => {
-  mcuScaleBase = { w: S.mcu.w, h: S.mcu.h };
-});
+// Uniform scale: the slider drives the same absolute multiplier as the number
+// field, so both stay in step with the package's actual size.
 $('#mcuScale').addEventListener('input', e => {
-  const f = num(e.target.value, 1);
-  const base = mcuScaleBase || { w: MCU_BASE_W(), h: S.mcu.h / (S.mcu._lastF || 1) };
-  S.mcu._lastF = f;
-  S.mcu.w = Math.max(1, base.w * f);
-  S.mcu.h = Math.max(1, base.h * f);
-  $('#mcuW').value = Math.round(S.mcu.w);
-  $('#mcuH').value = Math.round(S.mcu.h);
-  vset('mcuScale', f, 2, 1);
-  updatePitch(); render(); saveLocal();
+  setMcuScale(num(e.target.value, 1));
+  render(); saveLocal();
 });
-$('#mcuScale').addEventListener('change', () => { mcuScaleBase = null; });
+$('#mcuScale').addEventListener('change', () => histCommit('package scale'));
 
 $('#mcuToMm').addEventListener('click', () => {
   const p = pxPerMm();
@@ -2872,6 +3080,11 @@ function addPad(w, opts = {}) {
 function deletePad(id) {
   S.pads = S.pads.filter(p => p.id !== id);
   S.links = S.links.filter(l => l.pad !== id);
+  // A trace that still lists the deleted pad would keep a dead id in the
+  // project file and make traceLinks() report a pad that no longer exists.
+  for (const t of S.traces) {
+    if (Array.isArray(t.pads)) t.pads = t.pads.filter(pid => pid !== id);
+  }
   if (S.selectedPad === id) S.selectedPad = null;
   if (S.hoverPad === id) S.hoverPad = null;
   renderTables(); render(); saveLocal();
@@ -2905,8 +3118,6 @@ function setPadNet(pad, netId) {
   // Update just this row and the canvas. A full rebuild would drop focus from
   // the select the user just used, so they could not pick a second net.
   refreshPadRow(pad.id);
-  const linked = linkOf(pad.id);
-  if (linked) renderLinks();
   renderCanvasOnly(); saveLocal();
   histCommit('net ' + (netId || 'none'));
 }
@@ -3307,9 +3518,7 @@ cv.addEventListener('pointermove', e => {
       break;
     case 'mcu-rot':
       S.mcu.rot = Math.round(Math.atan2(w.y - S.mcu.y, w.x - S.mcu.x) * 180 / Math.PI + 90);
-      $('#mcuRot').value = S.mcu.rot;
       $('#mcuRotSlider').value = S.mcu.rot;
-      $('#mcuRot').value = Math.round(S.mcu.rot);
       vset('mcuRot', S.mcu.rot, 2, 1);
       break;
     case 'mcu-resize': {
@@ -3369,8 +3578,19 @@ cv.addEventListener('pointerup', () => {
   }[wasDrag] || '');
 });
 cv.addEventListener('pointercancel', () => { drag = null; });
-cv.addEventListener('pointerleave', () => {
-  if (S.hoverPad != null || S.loupe.on) { S.hoverPad = null; if (!S.loupe.on) render(); }
+cv.addEventListener('pointerleave', e => {
+  // Moving onto the trace card is not leaving the trace: it sits on top of the
+  // canvas, so clearing on the way in would hide the card under the cursor and
+  // then re-show it, flickering once per pixel.
+  if (e.relatedTarget && e.relatedTarget.closest && e.relatedTarget.closest('#traceInfo')) return;
+  // Leaving the canvas must drop the hover state, or the last trace you swept
+  // over stays highlighted and its card stays on screen as if you selected it.
+  if (S.hoverPad != null || S.hoverTrace != null || S.loupe.on) {
+    S.hoverPad = null;
+    S.hoverTrace = null;
+    if (!S.loupe.on) render();
+    else { cv.style.cursor = ''; }
+  }
 });
 
 cv.addEventListener('dblclick', e => {
@@ -3429,6 +3649,11 @@ function renderPins() {
     const p = S.pads.find(p => p.id === l.pad);
     if (p) linked.set(l.pin, p);
   }
+  const mapped = $('#pinMapped');
+  if (mapped) {
+    const n = linked.size;
+    mapped.textContent = n ? `${n}/${S.mcu.n} mapped` : '';
+  }
   const frag = document.createDocumentFragment();
   S.mcu.pins.forEach((pin, i) => {
     const n = i + 1, pad = linked.get(n);
@@ -3454,53 +3679,69 @@ function renderPins() {
   host.appendChild(frag);
 }
 
+const NOTES = ['unknown', 'GND', 'VDD', 'SWDIO', 'SWCLK', 'nRESET', 'VCC', 'other'];
+
+// One row per pad: identity, net, and the mapping — in that order, because
+// that is the order you fill them in. The old layout had a second, read-only
+// "Mapping" table listing the same pads, so the same fact lived in two places
+// and the sidebar looked twice as long as the work it described.
 function renderPads() {
   const host = $('#padList');
-  if (!S.pads.length) { host.innerHTML = '<div class="empty">No pads yet — press <b>⊕ pad</b> / <b>◎ via</b> and click the photo.</div>'; return; }
+  const count = $('#padCount');
+  if (count) {
+    const mapped = S.pads.filter(p => linkOf(p.id)).length;
+    count.textContent = S.pads.length ? `${mapped}/${S.pads.length} mapped` : '';
+  }
+  if (!S.pads.length) {
+    host.innerHTML = '<div class="empty">No pads yet — press <b>P</b> / <b>V</b> and click the photo.</div>';
+    return;
+  }
   const netOpts = `<option value="">net</option>` + Object.keys(NET_DEFS).map(k => `<option value="${k}">${k}</option>`).join('');
-  host.innerHTML = S.pads.map(p => `
+  const onlyUnmapped = !!$('#padFilterUnmapped')?.checked;
+  const shown = onlyUnmapped ? S.pads.filter(p => !linkOf(p.id)) : S.pads;
+
+  // Pin options: number, name and function, so picking the right pin is a
+  // single decision. This is the crux of the tool — "is this pad PA3/SWCLK or
+  // PA4?" — so the function belongs in the option, not in a separate row.
+  const pinOpts = (sel) => '<option value="">— pin —</option>' + S.mcu.pins.map((pin, i) => {
+    const n = i + 1;
+    const bits = [n];
+    if (pin.name) bits.push(pin.name);
+    if (pin.fn) bits.push(pin.fn);
+    return `<option value="${n}"${sel === n ? ' selected' : ''}>${esc(bits.join(' · '))}</option>`;
+  }).join('');
+
+  host.innerHTML = shown.map(p => {
+    const l = linkOf(p.id);
+    const pin = l ? S.mcu.pins[l.pin - 1] : null;
+    return `
     <div class="padrow${S.selectedPad === p.id ? ' sel' : ''}" data-pad="${p.id}">
-      <span class="pill">#${p.id}</span>
-      <input class="mini" data-pad="${p.id}" data-f="label" value="${esc(p.label)}" placeholder="label" style="flex:1 1 26%" aria-label="pad ${p.id} label">
-      <input class="mini" data-pad="${p.id}" data-f="notes" value="${esc(p.notes)}" placeholder="note" style="flex:1 1 22%" aria-label="pad ${p.id} notes">
-      <select data-pad="${p.id}" data-f="net" style="font-size:11px;max-width:58px" aria-label="pad ${p.id} net">${netOpts}</select>
-      <select data-pad="${p.id}" data-f="side" style="font-size:12px" aria-label="pad ${p.id} side">
-        <option value="front">F</option><option value="back">B</option><option value="via">via</option>
-      </select>
-      <input type="color" data-pad="${p.id}" data-f="color" value="${p.color}" aria-label="pad ${p.id} color">
-      <button class="del" data-del="${p.id}" title="delete pad ${p.id}">✕</button>
-    </div>`).join('');
+      <div class="pad-head">
+        <span class="pill" style="color:${p.color}">#${p.id}${isVia(p) ? ' ◎' : ''}</span>
+        <input class="mini" data-pad="${p.id}" data-f="label" value="${esc(p.label)}" placeholder="label"
+          style="flex:1 1 40%" aria-label="pad ${p.id} label">
+        <input class="mini" data-pad="${p.id}" data-f="notes" value="${esc(p.notes)}" placeholder="note"
+          style="flex:1 1 30%" aria-label="pad ${p.id} notes">
+        <input type="color" data-pad="${p.id}" data-f="color" value="${p.color}" aria-label="pad ${p.id} color">
+        <button class="del" data-del="${p.id}" title="delete pad ${p.id}">✕</button>
+      </div>
+      <div class="pad-head">
+        <select data-pad="${p.id}" data-f="pin" title="MCU pin this pad is wired to" style="font-size:11px;flex:1 1 auto;min-width:0" aria-label="pad ${p.id} MCU pin">${pinOpts(l ? l.pin : null)}</select>
+        <select data-pad="${p.id}" data-f="net" title="net / rail" style="font-size:11px;flex:0 0 auto;max-width:64px" aria-label="pad ${p.id} net">${netOpts}</select>
+        <select data-pad="${p.id}" data-f="side" title="board face, or via for both" style="font-size:11px;flex:0 0 auto" aria-label="pad ${p.id} side">
+          <option value="front">F</option><option value="back">B</option><option value="via">via</option>
+        </select>
+        ${l ? `<select data-note="${p.id}" title="what the meter showed" style="font-size:11px;flex:0 0 auto" aria-label="continuity for pad ${p.id}">${NOTES.map(n => `<option${n === l.note ? ' selected' : ''}>${n}</option>`).join('')}</select>` : ''}
+      </div>
+    </div>`;
+  }).join('') + (onlyUnmapped && !shown.length
+    ? '<div class="empty">every pad is mapped</div>' : '');
   for (const p of S.pads) {
     const side = host.querySelector(`select[data-pad="${p.id}"][data-f="side"]`);
     if (side) side.value = isVia(p) ? 'via' : p.side;
     const net = host.querySelector(`select[data-pad="${p.id}"][data-f="net"]`);
     if (net) net.value = padNet(p) || '';
   }
-}
-
-const NOTES = ['unknown', 'GND', 'VDD', 'SWDIO', 'SWCLK', 'nRESET', 'VCC', 'other'];
-
-function renderLinks() {
-  let html = '<thead><tr><th>pad</th><th>side</th><th>net</th><th>label</th><th>pin</th><th>pin name</th><th>continuity</th><th></th></tr></thead><tbody>';
-  if (!S.pads.length) html += '<tr><td colspan="8" class="empty">no pads</td></tr>';
-  for (const p of S.pads) {
-    const l = linkOf(p.id), pin = l ? S.mcu.pins[l.pin - 1] : null;
-    const net = padNet(p);
-    const netCell = net
-      ? `<span class="net-pill" style="background:${(NET_DEFS[net]?.color || p.color)}33;color:${NET_DEFS[net]?.color || p.color}">${esc(net)}</span>`
-      : '—';
-    html += `<tr${S.selectedPad === p.id ? ' class="sel"' : ''} data-rowpad="${p.id}">
-      <td style="color:${p.color}">#${p.id}${isVia(p) ? ' ◎' : ''}</td>
-      <td>${isVia(p) ? 'via' : p.side}</td>
-      <td>${netCell}</td>
-      <td>${esc(p.label || '')}</td>
-      <td>${l ? l.pin : '—'}</td>
-      <td>${pin ? esc(pin.name) + (pin.fn ? ' <span style="color:#8b97a8">' + esc(pin.fn) + '</span>' : '') : '—'}</td>
-      <td>${l ? `<select data-note="${p.id}" style="font-size:12px" aria-label="continuity for pad ${p.id}">${NOTES.map(n => `<option${n === l.note ? ' selected' : ''}>${n}</option>`).join('')}</select>` : '—'}</td>
-      <td>${l ? `<button data-unlink="${p.id}" title="unlink pad ${p.id}">✕</button>` : ''}</td>
-    </tr>`;
-  }
-  $('#linkTable').innerHTML = html + '</tbody>';
 }
 
 /* ------------------------------------------------------ library + components UI */
@@ -3731,7 +3972,7 @@ function pinNamesToText(c) {
     .map(n => n + ' ' + c.pinNames[n]).join('\n');
 }
 
-const renderTables = () => { renderPins(); renderPads(); renderLinks(); renderComponents(); renderDocs(); renderMcuDoc(); };
+const renderTables = () => { renderPins(); renderPads(); renderComponents(); renderDocs(); renderMcuDoc(); };
 
 /* library + component listeners */
 $('#docFile').addEventListener('change', async e => {
@@ -3848,16 +4089,10 @@ function refreshPadRow(padId) {
   if (side) side.value = isVia(p) ? 'via' : p.side;
   const net = row.querySelector('select[data-f=net]');
   if (net) net.value = padNet(p) || '';
+  const pin = row.querySelector('select[data-f=pin]');
+  if (pin) { const l = linkOf(p.id); pin.value = l ? String(l.pin) : ''; }
   const color = row.querySelector('input[data-f=color]');
   if (color && color.value !== p.color) color.value = p.color;
-}
-
-// Replace an input's text only when the model and the field disagree, and never
-// while that field has focus — otherwise typing fights the renderer.
-function setInputValue(el, value) {
-  if (!el || el === document.activeElement) return;
-  const v = value == null ? '' : String(value);
-  if (el.value !== v) el.value = v;
 }
 
 /* ---------------------------------------------------------- focus helpers */
@@ -3900,7 +4135,7 @@ $('#padList').addEventListener('click', e => {
 $('#padList').addEventListener('input', e => {
   const el = e.target.closest('[data-pad]'); if (!el || !el.dataset.f) return;
   const p = S.pads.find(p => p.id === +el.dataset.pad); if (!p) return;
-  if (el.dataset.f === 'net' || el.dataset.f === 'side') return;
+  if (el.dataset.f === 'net' || el.dataset.f === 'side' || el.dataset.f === 'pin') return;
   p[el.dataset.f] = el.value;
   // Canvas only — rebuilding the list would kill focus mid-word.
   renderCanvasOnly(); saveLocal();
@@ -3921,22 +4156,32 @@ $('#padList').addEventListener('change', e => {
   if (net) {
     const p = S.pads.find(p => p.id === +net.dataset.pad);
     if (p) setPadNet(p, net.value);
+    return;
+  }
+  // Mapping from the pad list: choosing a pin here is the same operation as
+  // clicking a pin in the Pins list with this pad selected, so it must go
+  // through addLink — otherwise the two paths could drift apart.
+  const pinSel = e.target.closest('select[data-f=pin]');
+  if (pinSel) {
+    const id = +pinSel.dataset.pad;
+    const n = parseInt(pinSel.value, 10);
+    if (Number.isFinite(n) && n > 0) addLink(id, n);
+    else {
+      S.links = S.links.filter(l => l.pad !== id);
+      renderTables(); render(); saveLocal(); histCommit('unlink pad');
+    }
+    return;
+  }
+  const note = e.target.closest('[data-note]');
+  if (note) {
+    const l = linkOf(+note.dataset.note);
+    if (l) { l.note = note.value; saveLocal(); histCommit('continuity note'); }
   }
 });
 
-$('#linkTable').addEventListener('change', e => {
-  const sel = e.target.closest('[data-note]'); if (!sel) return;
-  const l = linkOf(+sel.dataset.note); if (l) { l.note = sel.value; saveLocal(); histCommit('continuity note'); }
-});
-$('#linkTable').addEventListener('click', e => {
-  const un = e.target.closest('[data-unlink]');
-  if (un) {
-    S.links = S.links.filter(l => l.pad !== +un.dataset.unlink);
-    renderTables(); render(); saveLocal(); histCommit('unlink pad'); return;
-  }
-  const row = e.target.closest('[data-rowpad]');
-  if (row) { S.selectedPad = +row.dataset.rowpad; renderTables(); render(); }
-});
+// Filtering the pad list is a view concern, so it redraws the list and nothing
+// else — in particular it must not touch the model or the undo stack.
+$('#padFilterUnmapped')?.addEventListener('change', renderPads);
 
 /* ------------------------------------------------------------------- keys */
 // Held-key layer peek. `S` / `B` hide the top/bottom face while held so you can
@@ -4495,7 +4740,6 @@ function refreshUi() {
   $('#loupeHint').classList.toggle('on', !!S.loupe.on);
   $('#mcuName').value = S.mcu.name; $('#mcuN').value = S.mcu.n;
   $('#mcuW').value = Math.round(S.mcu.w); $('#mcuH').value = Math.round(S.mcu.h);
-  $('#mcuRot').value = S.mcu.rot;
   $('#mcuRotSlider').value = S.mcu.rot;
   vset('mcuCorner', S.mcu.corner, 2, 100);
   vset('mcuFill', S.mcu.pinFill, 2, 100);
@@ -5178,6 +5422,7 @@ async function selftest() {
   await selftestPinLinks();
   await selftestMultiTraceLinks();
   await selftestTraceExtend();
+  await selftestTraceInfo();
 
   if (selftestFailures) {
     status(`selftest FAILED — ${selftestFailures} assertion${selftestFailures === 1 ? '' : 's'} (see console)`);
@@ -5689,6 +5934,105 @@ async function selftestMultiTraceLinks() {
   // auto-name copes with several of each
   autoNameTrace(t.id);
   check(/P1|pin 1/.test(back.name), 'auto-name includes pin names', back.name);
+
+  histReset();
+  await restoreSession(keeper);
+}
+
+/* ------------------------------------- what a highlighted trace is connected to */
+async function selftestTraceInfo() {
+  const keeper = sessionObject(true);
+  S.pads = []; S.nextId = 1; S.links = []; S.traces = []; S.nextTraceId = 1;
+  S.pinLinks = [];
+  S.mcu.n = 32; S.mcu.pins = []; ensurePins();
+  S.mcu.pins[4].name = 'PA3'; S.mcu.pins[4].fn = 'SWCLK';
+  S.mcu.pins[9].name = 'PB1';
+  S.mcu.pins[13].name = 'PC0';
+
+  const padA = addPad({ x: 10, y: 10 }, { silent: true });
+  const padB = addPad({ x: 20, y: 20 }, { silent: true });
+  const padC = addPad({ x: 30, y: 30 }, { silent: true });
+  const t = { id: 7001, name: 'info', color: '#22d3ee', side: 'front', visible: true,
+    width: 3, pts: [{ x: 10, y: 10 }, { x: 20, y: 20 }], pads: [padA.id], pins: [5] };
+  S.traces.push(t);
+
+  // copper on a pad plus copper on a pin
+  let info = traceLinks(t);
+  check(info.pads.length === 1 && info.pads[0].id === padA.id, 'info lists the touched pad');
+  check(info.pins.some(p => p.n === 5 && p.how.includes('trace')), 'info lists the touched pin');
+
+  // the pad's own mapping counts as a pin the trace reaches
+  S.links = [{ pad: padA.id, pin: 5, note: 'unknown' }];
+  info = traceLinks(t);
+  check(info.pins.find(p => p.n === 5).how.length >= 1, 'pin reached by both routes is one entry');
+  check(!info.pins.some(p => p.n === 9), 'unrelated pins stay out');
+
+  // a pad with no mapping contributes no pin; adding one does
+  t.pads = [padB.id];
+  info = traceLinks(t);
+  check(info.pins.length === 1, 'an unmapped pad adds no pins', JSON.stringify(info.pins.map(p => p.n)));
+  const l = { pad: padB.id, pin: 9, note: 'unknown' };
+  S.links.push(l);
+  info = traceLinks(t);
+  check(info.pins.some(p => p.n === 9 && p.how.includes('pad')), 'pad mapping contributes its pin');
+
+  // pin ↔ pin ties propagate, including a second hop
+  addPinLink(9, 13);
+  info = traceLinks(t);
+  check(info.pins.some(p => p.n === 13 && p.how.includes('pin')), 'tied pin follows onto the trace');
+
+  // ...and the tie is a hop, not a jump: a pin tied to nothing stays out
+  check(!info.pins.some(p => p.n === 20), 'untied, unreached pins are not invented');
+
+  // metadata comes from the MCU table, so the card can say PA3 / SWCLK
+  S.links = [{ pad: padC.id, pin: 5, note: 'unknown' }];
+  t.pads = [padC.id];
+  info = traceLinks(t);
+  const five = info.pins.find(p => p.n === 5);
+  check(five && five.name === 'PA3' && five.fn === 'SWCLK', 'pin metadata resolved', JSON.stringify(five));
+
+  // a trace endpoint in mid-air is reported, one that lands on a pad is not
+  const loose = { id: 7002, name: 'loose', color: '#f472b6', side: 'front', visible: true,
+    width: 3, pts: [{ x: 3000, y: 3000 }, { x: 4000, y: 4000 }], pads: [], pins: [] };
+  check(traceDanglingEnds(loose).length === 2, 'both ends of a floating trace are loose',
+    JSON.stringify(traceDanglingEnds(loose)));
+  const anchored = { ...loose, pts: [{ x: padA.x, y: padA.y }, { x: 4000, y: 4000 }] };
+  check(traceDanglingEnds(anchored).length === 1, 'a pad-anchored end is not loose',
+    JSON.stringify(traceDanglingEnds(anchored)));
+
+  // the card renders the same facts, and clicking a chip selects the pad
+  S.activeTrace = 7001;
+  t.pads = [padC.id];
+  render();
+  const card = document.querySelector('#traceInfo');
+  check(card.classList.contains('on'), 'trace card shown for the active trace');
+  check(/PA3/.test(card.textContent), 'card names the pin', card.textContent);
+  check(card.querySelector('[data-ti-pad]'), 'card offers the pad as a chip');
+  card.querySelector('[data-ti-pad]').click();
+  check(S.selectedPad === padC.id, 'clicking a pad chip selects that pad', S.selectedPad);
+
+  // no trace, no card
+  S.activeTrace = null; S.hoverTrace = null;
+  render();
+  check(!card.classList.contains('on'), 'card hides when nothing is selected');
+
+  // deleting a pad must not leave a dead id on a trace (the card and the CSV
+  // both read that list, so a stale id shows up as a pad that isn't there)
+  t.pads = [padA.id, padB.id];
+  deletePad(padA.id);
+  check(!t.pads.includes(padA.id), 'deleting a pad clears it from traces',
+    JSON.stringify(t.pads));
+
+  // shrinking the pin count prunes links, ties and trace pins that no longer exist
+  S.mcu.n = 32; ensurePins();
+  S.links = [{ pad: padB.id, pin: 30, note: 'unknown' }];
+  S.pinLinks = [{ a: 29, b: 30 }];
+  t.pins = [28, 30];
+  S.mcu.n = 8; ensurePins(); prunePinRefs();
+  check(!S.links.some(l => l.pin > 8), 'pad links to removed pins are pruned',
+    JSON.stringify(S.links));
+  check(!S.pinLinks.length, 'pin ties to removed pins are pruned', JSON.stringify(S.pinLinks));
+  check(!t.pins.some(n => n > 8), 'trace pins to removed pins are pruned', JSON.stringify(t.pins));
 
   histReset();
   await restoreSession(keeper);
